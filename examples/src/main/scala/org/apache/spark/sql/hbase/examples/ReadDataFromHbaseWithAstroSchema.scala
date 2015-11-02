@@ -31,7 +31,7 @@ import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType}
  *   CREATE TABLE teacher(grade int, class int, subject string, teacher_name string,
  *   teacher_age int, PRIMARY KEY (grade, class, subject))
  *   MAPPED BY (hbase_teacher, COLS=[teacher_name=teachercf.name, teacher_age=teachercf.age]);
- *  Astro uses its own encode and decode of keys, so we should use Astro APIs to convert them..
+ *  Astro uses its own encode and decode of keys, so we should use Astro APIs to convert them.
  */
 object ReadDataFromHbaseWithAstroSchema {
   def main(args: Array[String]): Unit = {
