@@ -22,7 +22,7 @@ import org.apache.hadoop.hbase.filter._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.{HBaseConfiguration, _}
 import org.apache.log4j.Logger
-import org.apache.spark.TaskContext
+import org.apache.spark.{Logging, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.execution.datasources.LogicalRelation
@@ -47,7 +47,18 @@ class HBaseSource extends SchemaRelationProvider {
                                parameters: Map[String, String],
                                schema: StructType): BaseRelation = {
 
-    val tableName = parameters("tableName")
+    val optSet = Set("hbasetablename", "keycols", "colsmapping")
+    val keySet = parameters.keySet.map(_.toLowerCase)
+    if (!(optSet.intersect(keySet).size == 3)) {
+      throw new Exception("Options keys(hbaseTableName, keyCols, colsMapping) are obligatory")
+    }
+
+    // As we cann't get tableName on CREATE clause, so we can not check whether if the tableName on
+    // CREATE clause is equal to the tableName on options.
+    // Actually we only use tableName for tmp file path prefix, so we don't need it on options,
+    // see org.apache.spark.sql.hbase.execution.BulkLoadIntoTableCommand which will use tableName.
+    val tableName = "astroLogicTable"
+
     val hbaseTable = parameters("hbaseTableName")
     // This is HBase table namespace, not logical table's namespace, and actually we don't use it,
     // may be it always is the default namespace.
@@ -56,6 +67,13 @@ class HBaseSource extends SchemaRelationProvider {
     } else {
       ""
     }
+
+    schema.fields.foreach { filed =>
+      if (!DataTypeUtils.supportedDataTypes.contains(filed.dataType)) {
+        throw new Exception(s"Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
+      }
+    }
+
     val colsSeq = schema.fieldNames
     val keyCols = parameters("keyCols").split(",").map(_.trim)
     val colsMapping = parameters("colsMapping").split(",").map(_.trim)
@@ -139,8 +157,7 @@ private[hbase] case class HBaseRelation(
                                          deploySuccessfully: Option[Boolean],
                                          encodingFormat: String = "binaryformat")
                                        (@transient var context: SQLContext)
-  extends BaseRelation with InsertableRelation with Serializable {
-  @transient lazy val logger = Logger.getLogger(getClass.getName)
+  extends BaseRelation with InsertableRelation with Serializable with Logging {
 
   @transient lazy val keyColumns = allColumns.filter(_.isInstanceOf[KeyColumn])
     .asInstanceOf[Seq[KeyColumn]].sortBy(_.order)
@@ -196,7 +213,7 @@ private[hbase] case class HBaseRelation(
     config
   }
 
-  logger.debug(s"HBaseRelation config has zkPort="
+  logDebug(s"HBaseRelation config has zkPort="
     + s"${getConf.get("hbase.zookeeper.property.clientPort")}")
 
   @transient private var htable_ : HTable = _
@@ -252,7 +269,7 @@ private[hbase] case class HBaseRelation(
       partitionTS = System.currentTimeMillis
       partitions = {
         val regionLocations = htable.getRegionLocations.asScala.toSeq
-        logger.info(s"Number of HBase regions for " +
+        logInfo(s"Number of HBase regions for " +
           s"table ${htable.getName.getNameAsString}: ${regionLocations.size}")
         regionLocations.zipWithIndex.map {
           case p =>
@@ -729,9 +746,12 @@ private[hbase] case class HBaseRelation(
 
     var rowIndexInBatch = 0
     var colIndexInBatch = 0
+    var isSkip = false
+    var skipCount = BatchMaxSize
 
     var puts = new ListBuffer[Put]()
     while (iterator.hasNext) {
+      isSkip = false
       val row = iterator.next()
       val seq = row.toSeq.map{
         case s:String => UTF8String.fromString(s)
@@ -742,28 +762,38 @@ private[hbase] case class HBaseRelation(
         kc => {
           val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
             internalRow, kc.ordinal, kc.dataType)
+          if (rowColumn.isEmpty) {
+            isSkip = true
+          }
           colIndexInBatch += 1
           (rowColumn, kc.dataType)
         }
       )
-      val key = HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
-      val put = new Put(key)
-      nonKeyColumns.foreach(
-        nkc => {
+
+      if (isSkip) {
+        if (skipCount == BatchMaxSize) {
+          logWarning("Skip some rows for some null value in row keys.")
+          skipCount = 0
+        } else {
+          skipCount += 1
+        }
+      } else {
+        val key = HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
+        val put = new Put(key)
+        nonKeyColumns.foreach { nkc =>
           val rowVal = DataTypeUtils.getRowColumnInHBaseRawType(
             internalRow, nkc.ordinal, nkc.dataType, bytesUtils)
           colIndexInBatch += 1
           put.add(nkc.familyRaw, nkc.qualifierRaw, rowVal)
         }
-      )
-
-      puts += put
-      colIndexInBatch = 0
-      rowIndexInBatch += 1
-      if (rowIndexInBatch >= BatchMaxSize) {
-        htable.put(puts.toList)
-        puts.clear()
-        rowIndexInBatch = 0
+        puts += put
+        colIndexInBatch = 0
+        rowIndexInBatch += 1
+        if (rowIndexInBatch >= BatchMaxSize) {
+          htable.put(puts.toList)
+          puts.clear()
+          rowIndexInBatch = 0
+        }
       }
     }
     if (puts.nonEmpty) {

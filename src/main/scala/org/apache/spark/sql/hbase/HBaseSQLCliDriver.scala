@@ -134,9 +134,7 @@ object HBaseSQLCliDriver extends Logging {
           println( """CREATE TABLE table_name (col_name data_type, ...)
                      |USING org.apache.spark.sql.hbase.HBaseSource
                      |OPTIONS(
-                     |  tableName "table_name",
-                     |  namespace "default",
-                     |  hbaseTableName "htable_name",
+                     |  hbaseTableName "namespace.htable_name",
                      |  keyCols "col_name, ...",
                      |  colsMapping "col_name=family_name.qualifier, ...",
                      |  encodingFormat "StringFormat"

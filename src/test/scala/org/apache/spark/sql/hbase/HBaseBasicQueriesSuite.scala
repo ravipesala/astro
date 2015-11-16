@@ -26,9 +26,9 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
 
     val result1 = runSql(query1)
     assert(result1.length == 3, s"$testnm failed on size")
-    val exparr = Array(Array("Row1", 'a', 12345, 23456789, 3456789012345L, 45657.89F, 5678912.345678),
-      Array("Row2", 'b', 12342, 23456782, 3456789012342L, 45657.82F, 5678912.345682),
-      Array("Row3", 'c', 12343, 23456783, 3456789012343L, 45657.83F, 5678912.345683))
+    val exparr = Array(Array("Row1", null, 12345, 23456789, 3456789012345L, 45657.89F, 5678912.345678),
+      Array("Row2", null, 12342, 23456782, 3456789012342L, 45657.82F, 5678912.345682),
+      Array("Row3", null, 12343, 23456783, 3456789012343L, 45657.83F, 5678912.345683))
 
     var res = {
       for (rx <- 0 until 3)
@@ -66,8 +66,8 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
     logInfo(s"$query1 came back with $result1.length results")
     assert(result1.length == 2, s"$testnm failed on size")
     val exparr = Array(
-      Array("Row2", 'b', 12342, 23456782, 3456789012342L, 45657.82F, 5678912.345682),
-      Array("Row3", 'c', 12343, 23456783, 3456789012343L, 45657.83F, 5678912.345683))
+      Array("Row2", null, 12342, 23456782, 3456789012342L, 45657.82F, 5678912.345682),
+      Array("Row3", null, 12343, 23456783, 3456789012343L, 45657.83F, 5678912.345683))
 
     val res = {
       for (rx <- 0 until 2)
@@ -88,8 +88,8 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
     val result1 = runSql(query1)
     assert(result1.length == 2, s"$testnm failed on size")
     val exparr = Array(
-      Array("Row3", 'c', 12343, 23456783, 3456789012343L, 45657.83F, 5678912.345683),
-      Array("Row2", 'b', 12342, 23456782, 3456789012342L, 45657.82F, 5678912.345682))
+      Array("Row3", null, 12343, 23456783, 3456789012343L, 45657.83F, 5678912.345683),
+      Array("Row2", null, 12342, 23456782, 3456789012342L, 45657.82F, 5678912.345682))
 
     val res = {
       for (rx <- 0 until 2)
@@ -140,7 +140,7 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
     assert(result1.length == 1, s"$testnm failed on size")
     val exparr = Array(
       Array(5678912.345682, -5678912.345682, "ow2", 5678912.345682,
-        "Row2", 'b', 12342, 23456782, 3456789012342L, 45657.82F))
+        "Row2", null, 12342, 23456782, 3456789012342L, 45657.82F))
 
     assert(result1.length == 1, s"$testnm failed assertion on size")
     val res = {
@@ -173,7 +173,7 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
     assert(result1.length == 2, s"$testnm failed on size")
     val exparr = Array(
       Array(5678912.345682, -5678912.345682, "ow2", 5678912.345682,
-        "Row2", 'b', 12342, 23456782, 3456789012342L, 45657.82F),
+        "Row2", null, 12342, 23456782, 3456789012342L, 45657.82F),
       Array(5678912.345683, -5678912.345683, "ow3", 5678912.345683,
         "Row3", -29, 12343, 23456783, 3456789012343L, 45657.83))
 
@@ -199,7 +199,7 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
     assert(result1.length == 2, s"$testnm failed on size")
     val exparr = Array(
       Array(5678912.345682, -5678912.345682, "ow2", 5678912.345682,
-        "Row2", 'b', 12342, 23456782, 3456789012342L, 45657.82F),
+        "Row2", null, 12342, 23456782, 3456789012342L, 45657.82F),
       Array(5678912.345683, -5678912.345683, "ow3", 5678912.345683,
         "Row3", -29, 12343, 23456783, 3456789012343L, 45657.83))
 
@@ -225,7 +225,7 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
     assert(result1.length == 2, s"$testnm failed on size")
     val exparr = Array(
       Array(5678912.345682, -5678912.345682, "ow2", 5678912.345682,
-        "Row2", 'b', 12342, 23456782, 3456789012342L, 45657.82F),
+        "Row2", null, 12342, 23456782, 3456789012342L, 45657.82F),
       Array(5678912.345683, -5678912.345683, "ow3", 5678912.345683,
         "Row3", -29, 12343, 23456783, 3456789012343L, 45657.83))
 
