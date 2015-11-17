@@ -137,7 +137,8 @@ object HBaseSQLCliDriver extends Logging {
                      |  hbaseTableName "namespace.htable_name",
                      |  keyCols "col_name, ...",
                      |  colsMapping "col_name=family_name.qualifier, ...",
-                     |  encodingFormat "StringFormat"
+                     |  encodingFormat "StringFormat",
+                     |  splitKeys "split_value, ...| split_value, ..."
                      |)""".stripMargin)
         case "DROP" =>
           println("DROP TABLE table_name")

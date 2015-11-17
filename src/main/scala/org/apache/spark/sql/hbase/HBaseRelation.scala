@@ -135,8 +135,31 @@ class HBaseSource extends SchemaRelationProvider {
         }
     }
 
-    val hbaseCatalog = sqlContext.asInstanceOf[HBaseSQLContext].hbaseCatalog
-    hbaseCatalog.createTable(tableName, rawNamespace, hbaseTable, allColumns, null, encodingFormat)
+    val hbaseContext = sqlContext.asInstanceOf[HBaseSQLContext]
+    val dataDelimiter =
+      hbaseContext.conf.getConfString("spark.sql.hbase.splitkeys.dataDelimiter", ",")
+    val groupDelimiter =
+      hbaseContext.conf.getConfString("spark.sql.hbase.splitkeys.groupDelimiter", "\\|")
+    val splitKeys: Array[Array[Byte]] = parameters.get("splitKeys") match {
+      case Some(splitKeysInfo) =>
+        val dataTypes: Seq[DataType] = keyCols.map(keyColsWithDataType.get(_).get)
+        // We can not use ";" as delimiter, as SQL clause use it as terminating symbol.
+        splitKeysInfo.split(groupDelimiter).map(_.trim).map { splitKeyStr: String =>
+          val splitKeyArr = splitKeyStr.split(dataDelimiter).map(_.trim)
+          if (splitKeyArr.length != dataTypes.length) {
+            throw new Exception(s"There are ${dataTypes.length} keys, " +
+              s"but have ${splitKeyArr.length} split key values")
+          }
+          val rowArr: Array[Any] = splitKeyArr.zipWithIndex.map {
+            case (skv, idx) => Util.getValueFromString(skv, dataTypes(idx))
+          }
+          new GenericInternalRow(rowArr)
+        }.map(HBaseKVHelper.makeRowKey(_, dataTypes))
+      case None => null
+    }
+
+    hbaseContext.hbaseCatalog.createTable(
+      tableName, rawNamespace, hbaseTable, allColumns, splitKeys, encodingFormat)
   }
 }
 
