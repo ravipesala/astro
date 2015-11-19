@@ -106,14 +106,15 @@ object HBaseKVHelper {
                 relation: HBaseRelation,
                 lineBuffer: Array[ToBytesUtils],
                 keyBytes: Array[(Array[Byte], DataType)],
-                valueBytes: Array[HBaseRawType]) = {
-    assert(values.length == relation.output.length,
-      s"values length ${values.length} not equals columns length ${relation.output.length}")
+                valueBytes: Array[HBaseRawType]): Boolean = {
 
     relation.keyColumns.foreach(kc => {
       val ordinal = kc.ordinal
-      keyBytes(kc.order) = (string2Bytes(values(ordinal), lineBuffer(ordinal)),
-        relation.output(ordinal).dataType)
+      val bytes = string2Bytes(values(ordinal), lineBuffer(ordinal))
+      if (bytes.isEmpty) {
+        return false
+      }
+      keyBytes(kc.order) = (bytes, relation.output(ordinal).dataType)
     })
     for (i <- relation.nonKeyColumns.indices) {
       val nkc = relation.nonKeyColumns(i)
@@ -124,23 +125,31 @@ object HBaseKVHelper {
       }
       valueBytes(i) = bytes
     }
+    true
   }
 
   private def string2Bytes(v: String, bu: ToBytesUtils): Array[Byte] = {
     v match {
-      case "" => new Array[Byte](0)
       case null => new Array[Byte](0)
+      case "" => new Array[Byte](0)
       case _ =>
-        bu.dataType match {
-          // todo: handle some complex types
-          case BooleanType => bu.toBytes(v.toBoolean)
-          case ByteType => bu.toBytes(v)
-          case DoubleType => bu.toBytes(v.toDouble)
-          case FloatType => bu.toBytes(v.toFloat)
-          case IntegerType => bu.toBytes(v.toInt)
-          case LongType => bu.toBytes(v.toLong)
-          case ShortType => bu.toBytes(v.toShort)
-          case StringType => bu.toBytes(v)
+        try {
+          bu.dataType match {
+            // todo: handle some complex types
+            case BooleanType => bu.toBytes(v.toBoolean)
+            case ByteType => bu.toBytes(v.toByte)
+            case DoubleType => bu.toBytes(v.toDouble)
+            case FloatType => bu.toBytes(v.toFloat)
+            case IntegerType => bu.toBytes(v.toInt)
+            case LongType => bu.toBytes(v.toLong)
+            case ShortType => bu.toBytes(v.toShort)
+            case StringType => bu.toBytes(v)
+          }
+        } catch {
+          case e: NumberFormatException =>
+            // If there is an error of dataType cast, we set this field to be null. And we will
+            // print the error log outside this function.
+            new Array[Byte](0)
         }
     }
   }

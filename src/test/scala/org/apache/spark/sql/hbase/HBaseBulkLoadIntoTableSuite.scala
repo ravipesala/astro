@@ -74,6 +74,59 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
     assert(l.delimiter.get.equals(raw"\\|"))
   }
 
+  test("load data from bad data file") {
+    try {
+      dropLogicalTable("badDataTable")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
+    // delete the existing hbase table
+    if (TestHbase.hbaseAdmin.tableExists("badDataHTable")) {
+      TestHbase.hbaseAdmin.disableTable("badDataHTable")
+      TestHbase.hbaseAdmin.deleteTable("badDataHTable")
+    }
+
+    // create sql table map with hbase table and run simple sql
+    val sql1 =
+      s"""create table badDataTable(c1 string, c2 string, c3 string)
+         |using org.apache.spark.sql.hbase.HBaseSource
+         |options(
+         |tableName "badDataTable",
+         |hbaseTableName "badDataHTable",
+         |keyCols "c2",
+         |colsMapping "c1=cf1.cq11,c3=cf1.cq13")
+         |""".stripMargin
+
+    val sql2 =
+      s"""select * from badDataTable limit 5"""
+        .stripMargin
+
+    val executeSql1 = TestHbase.executeSql(sql1)
+    executeSql1.toRdd.collect()
+
+    val executeSql2 = TestHbase.executeSql(sql2)
+    executeSql2.toRdd.collect()
+
+    val inputFile = "'" + hbaseHome + "/badData.txt'"
+
+    // then load data into table
+    val loadSql = "LOAD DATA LOCAL INPATH " + inputFile + " INTO TABLE badDataTable"
+
+    val executeSql3 = TestHbase.executeSql(loadSql)
+    executeSql3.toRdd.collect()
+
+    checkAnswer(TestHbase.sql("select * from badDataTable"),
+      Row("Row1", "key1", "value1") ::
+        Row("Row2", "key2", null) ::
+        Row("Row3", "key3", "value3") ::
+        Row("Row6", "key6", null) ::
+        Nil)
+
+    // cleanup
+    dropLogicalTable("badDataTable")
+    dropNativeHbaseTable("badDataHTable")
+  }
+
   test("load data into hbase") {
 
     val drop = "drop table testblk"

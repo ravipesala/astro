@@ -84,12 +84,15 @@ class TestBaseWithSplitData extends TestBase {
            |USING org.apache.spark.sql.hbase.HBaseSource
            |OPTIONS(
            |  tableName "$TableName_a",
-           |  hbaseTableName "ht",
+           |  hbaseTableName "$HbaseTableName",
            |  keyCols "col7,col1,col3",
            |  colsMapping "col2=cf1.cq11,col4=cf1.cq12,col5=cf2.cq21,col6=cf2.cq22",
            |  splitKeys "$splitKeys"
            |  )""".stripMargin
       runSql(ta_sql)
+
+      assert(TestHbase.hbaseAdmin.getTableRegions(TableName.valueOf(HbaseTableName)).size == 8,
+        "test failed when create table with multiple regions")
 
       try {
         dropLogicalTable(TableName_b)
@@ -110,7 +113,7 @@ class TestBaseWithSplitData extends TestBase {
            |USING org.apache.spark.sql.hbase.HBaseSource
            |OPTIONS(
            |  tableName "$TableName_b",
-           |  hbaseTableName "ht",
+           |  hbaseTableName "$HbaseTableName",
            |  keyCols "col7,col1,col3",
            |  colsMapping "col2=cf1.cq11,col4=cf1.cq12,col5=cf2.cq21,col6=cf2.cq22"
            |)

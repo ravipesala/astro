@@ -49,8 +49,8 @@ TestBaseWithNonSplitData {
     val result1 = runSql(query)
     assert(result1.length == 2, s"$testName failed on size")
     val exparr = Array(
-      Array(1, 23456783, 45657.83F, "Row3", 'c', 12343, 45657.83F, 5678912.345683, 3456789012343L),
-      Array(1, 23456782, 45657.82F, "Row2", 'b', 12342, 45657.82F, 5678912.345682, 3456789012342L))
+      Array(1, 23456783, 45657.83F, "Row3", null, 12343, 45657.83F, 5678912.345683, 3456789012343L),
+      Array(1, 23456782, 45657.82F, "Row2", null, 12342, 45657.82F, 5678912.345682, 3456789012342L))
 
     val res = {
       for (rx <- exparr.indices)
@@ -77,8 +77,8 @@ TestBaseWithNonSplitData {
     val result1 = runSql(query1)
     assert(result1.length == 2, s"$testnm failed on size")
     val exparr = Array(
-      Array(1, 23456783, 45657.83F, "Row3", 'c', 12343, 45657.83F, 5678912.345683, 3456789012343L),
-      Array(1, 23456782, 45657.82F, "Row2", 'b', 12342, 45657.82F, 5678912.345682, 3456789012342L))
+      Array(1, 23456783, 45657.83F, "Row3", null, 12343, 45657.83F, 5678912.345683, 3456789012343L),
+      Array(1, 23456782, 45657.82F, "Row2", null, 12342, 45657.82F, 5678912.345682, 3456789012342L))
 
     val res = {
       for (rx <- exparr.indices)

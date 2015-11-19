@@ -17,7 +17,7 @@
 package org.apache.spark.sql.hbase.execution
 
 import java.text.SimpleDateFormat
-import java.util.Date
+import java.util.{UUID, Date}
 
 import org.apache.hadoop.conf.Configurable
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -30,6 +30,7 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter
 import org.apache.hadoop.mapreduce.{Job, RecordWriter}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mapreduce.SparkHadoopMapReduceUtil
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.expressions.{Expression, Attribute}
@@ -38,9 +39,9 @@ import org.apache.spark.sql.execution.RunnableCommand
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.hbase.HBasePartitioner.HBaseRawOrdering
 import org.apache.spark.sql.hbase._
-import org.apache.spark.sql.hbase.util.{DataTypeUtils, Util}
+import org.apache.spark.sql.hbase.util.{HBaseKVHelper, DataTypeUtils, Util}
 import org.apache.spark.sql.types._
-import org.apache.spark.{Logging, SerializableWritable, SparkEnv, TaskContext}
+import org.apache.spark._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -48,7 +49,7 @@ import scala.collection.mutable.ArrayBuffer
 @DeveloperApi
 case class AlterDropColCommand(tableName: String, columnName: String) extends RunnableCommand {
 
-  def run(sqlContext: SQLContext): Seq[Row] = {
+  override def run(sqlContext: SQLContext): Seq[Row] = {
 
     val hbaseContext = sqlContext.asInstanceOf[HBaseSQLContext]
 
@@ -73,6 +74,10 @@ case class AlterDropColCommand(tableName: String, columnName: String) extends Ru
         .orElse(HBaseCatalog.schemaStringFromParts(oriTableProperties))
     val userSpecifiedSchema =
       schemaString.map(s => DataType.fromJson(s).asInstanceOf[StructType]).get
+    // If the column to be dropped don't exists in the table, we throw exception.
+    if (!userSpecifiedSchema.fieldNames.contains(columnName)) {
+      throw new Exception(s"Unknow column $columnName in table $tableName")
+    }
     val alterUserSpecifiedSchema: Option[StructType] =
       Some(StructType(userSpecifiedSchema.filter { field =>
         field.name != columnName
@@ -113,13 +118,20 @@ case class AlterAddColCommand(
                                colFamily: String,
                                colQualifier: String) extends RunnableCommand {
 
-  def run(sqlContext: SQLContext): Seq[Row] = {
+  override def run(sqlContext: SQLContext): Seq[Row] = {
 
     val hbaseContext = sqlContext.asInstanceOf[HBaseSQLContext]
 
     val hiveTable = hbaseContext.catalog.client.getTable("default", tableName)
     if (hiveTable == null) {
       throw new Exception(s"Table $tableName is not exists")
+    }
+
+    // For the new column to be added, we must be confirm the column family has already exists in
+    // the mapping HBase table.
+    val hbaseTableName = hiveTable.serdeProperties.get("hbaseTableName").get
+    if (!hbaseContext.hbaseCatalog.checkFamilyExists(hbaseTableName, colFamily)) {
+      throw new Exception(s"HBase table does not contain column family: $colFamily")
     }
 
     val oriTableProperties = hiveTable.properties
@@ -131,6 +143,10 @@ case class AlterAddColCommand(
         .orElse(HBaseCatalog.schemaStringFromParts(oriTableProperties))
     val userSpecifiedSchema =
       schemaString.map(s => DataType.fromJson(s).asInstanceOf[StructType]).get
+    // If the column to be added already exists in the table, we throw exception.
+    if (userSpecifiedSchema.fieldNames.contains(colName)) {
+      throw new Exception(s"Column $colName already exists in table $tableName")
+    }
     val alterUserSpecifiedSchema: Option[StructType] =
       Some(StructType(userSpecifiedSchema.fields.toSeq :+
         StructField(colName, hbaseContext.hbaseCatalog.getDataType(colType))))
@@ -191,9 +207,20 @@ case class InsertValueIntoTableCommand(tableName: String, valueSeq: Seq[String])
       .child.asInstanceOf[LogicalRelation]
       .relation.asInstanceOf[HBaseRelation]
 
-    val bytes = valueSeq.zipWithIndex.map(v =>
-      DataTypeUtils.string2TypeData(v._1, relation.schema(v._2).dataType))
-    
+    if (relation.output.length < valueSeq.length) {
+      logWarning("Length of the values is greater than the columns and ignore some later values.")
+    } else if (relation.output.length > valueSeq.length) {
+      logWarning("Length of the values is shorter than the columns and set null to fill the row.")
+    }
+
+    val bytes = new Array[Any](relation.output.length)
+    for (i <- relation.output.indices) {
+      if (i < valueSeq.length) {
+        bytes(i) = DataTypeUtils.string2TypeData(valueSeq(i), relation.schema(i).dataType)
+      } else {
+        bytes(i) = null
+      }
+    }
     val rows = sqlContext.sparkContext.makeRDD(Seq(Row.fromSeq(bytes)))
     val inputValuesDF = sqlContext.createDataFrame(rows, relation.schema)
     relation.insert(inputValuesDF, overwrite = false)
@@ -299,18 +326,35 @@ case class BulkLoadIntoTableCommand(
 
     @transient val conf = job.getConfiguration
 
-    @transient val hadoopReader = if (isLocal) {
-      val fs = FileSystem.getLocal(conf)
-      val pathString = fs.pathToFile(new Path(inputPath)).toURI.toURL.toString
-      new HadoopReader(sqlContext.sparkContext, pathString, delimiter)(relation)
+    var tempHdfsFilePath: Path = null
+    val fileSystem = FileSystem.get(conf)
+
+    @transient val destPathInHdfs = if (isLocal) {
+      // When file input  from local, put it into hdfs first, and then it goes as load from hdfs
+      val src = new Path(inputPath)
+      val tempUuid = UUID.randomUUID().toString
+      val tmpDir = "/tmp/"
+      if (!fileSystem.exists(new Path(tmpDir))) {
+        fileSystem.mkdirs(new Path(tmpDir))
+      }
+
+      val destPath = tmpDir + tempUuid
+      tempHdfsFilePath = new Path(destPath)
+
+      // Don't catch the exception here, so that thriftserver can catch this exception and tell
+      // client.
+      fileSystem.copyFromLocalFile(src, tempHdfsFilePath)
+
+      destPath
     } else {
-      new HadoopReader(sqlContext.sparkContext, inputPath, delimiter)(relation)
+      inputPath
     }
 
     @transient val splitKeys = relation.getRegionStartKeys.toArray
     @transient val wrappedConf = new SerializableWritable(conf)
 
-    @transient val rdd = hadoopReader.makeBulkLoadRDDFromTextFile
+    @transient val rdd = makeBulkLoadRDDFromTextFile(sqlContext.sparkContext,
+      destPathInHdfs, delimiter, relation)
     @transient val partitioner = new HBasePartitioner(splitKeys)
     @transient val ordering = Ordering[HBaseRawType]
     @transient val shuffled =
@@ -348,9 +392,7 @@ case class BulkLoadIntoTableCommand(
         var recordsWritten = 0L
         var kv: (HBaseRawType, Array[HBaseRawType]) = null
         var prevK: HBaseRawType = null
-        val columnFamilyNames =
-          relation.htable.getTableDescriptor.getColumnFamilies.map(
-          f => {f.getName})
+        val columnFamilyNames = relation.htable.getTableDescriptor.getColumnFamilies.map( _.getName)
         var isEmptyRow = true
 
         try {
@@ -377,8 +419,7 @@ case class BulkLoadIntoTableCommand(
 
             if(isEmptyRow) {
               bytesWritable.set(kv._1)
-              writer.write(bytesWritable,
-                new KeyValue(
+              writer.write(bytesWritable, new KeyValue(
                   kv._1,
                   columnFamilyNames(0),
                   HConstants.EMPTY_BYTE_ARRAY,
@@ -426,6 +467,51 @@ case class BulkLoadIntoTableCommand(
     logDebug(s"finish BulkLoad on table ${relation.htable.getName}:" +
       s" ${System.currentTimeMillis()}")
     Seq.empty[Row]
+  }
+
+  private def makeBulkLoadRDDFromTextFile(
+                                           sc: SparkContext,
+                                           path: String,
+                                           delimiter: Option[String],
+                                           baseRelation: HBaseRelation): RDD[(hbase.HBaseRawType, Array[hbase.HBaseRawType])] = {
+    val rdd = sc.textFile(path)
+    val splitRegex = delimiter.getOrElse(",")
+    val relation = baseRelation
+
+    rdd.mapPartitions { iter =>
+      val lineBuffer = HBaseKVHelper.createLineBuffer(relation.output)
+      val keyBytes = new Array[(HBaseRawType, DataType)](relation.keyColumns.size)
+      var skipCount = 100
+
+      iter.flatMap { line =>
+        if (line == "") {
+          None
+        } else {
+          val valueBytes = new Array[HBaseRawType](relation.nonKeyColumns.size)
+          val textValueArray = line.split(splitRegex, -1)
+          val values = new Array[String](relation.output.length)
+          for (i <- relation.output.indices) {
+            if (i < textValueArray.length) {
+              values(i) = textValueArray(i)
+            } else {
+              values(i) = null
+            }
+          }
+          if (HBaseKVHelper.string2KV(values.toSeq, relation, lineBuffer, keyBytes, valueBytes)) {
+            val rowKeyData = HBaseKVHelper.encodingRawKeyColumns(keyBytes)
+            Seq((rowKeyData, valueBytes))
+          } else {
+            if (skipCount == 100) {
+              logWarning("Skip some rows for some null value in row keys.")
+              skipCount = 0
+            } else {
+              skipCount += 1
+            }
+            None
+          }
+        }
+      }
+    }
   }
 
   override def output = Nil

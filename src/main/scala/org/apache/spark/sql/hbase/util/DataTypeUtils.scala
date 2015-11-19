@@ -17,6 +17,7 @@
 package org.apache.spark.sql.hbase.util
 
 import org.apache.hadoop.hbase.filter.{BinaryComparator, ByteArrayComparable}
+import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Literal, MutableRow}
@@ -27,7 +28,12 @@ import org.apache.spark.sql.types._
 /**
  * Data Type conversion utilities
  */
-object DataTypeUtils {
+object DataTypeUtils extends Logging {
+
+  val supportedDataTypes: Set[DataType] = (IntegerType :: StringType :: LongType
+    :: ShortType :: BooleanType :: ByteType
+    :: DoubleType :: FloatType :: Nil).toSet
+
   /**
    * convert the byte array to data
    * @param src the input byte array
@@ -108,16 +114,22 @@ object DataTypeUtils {
     v match {
       case null => null
       case _ =>
-        dt match {
-          // TODO: handle some complex types
-          case BooleanType => v.toBoolean
-          case ByteType => v.getBytes()(0)
-          case DoubleType => v.toDouble
-          case FloatType => v.toFloat
-          case IntegerType => v.toInt
-          case LongType => v.toLong
-          case ShortType => v.toShort
-          case StringType => v
+        try {
+          dt match {
+            // TODO: handle some complex types
+            case BooleanType => v.toBoolean
+            case ByteType => v.toByte
+            case DoubleType => v.toDouble
+            case FloatType => v.toFloat
+            case IntegerType => v.toInt
+            case LongType => v.toLong
+            case ShortType => v.toShort
+            case StringType => v
+          }
+        } catch {
+          case _: NumberFormatException | _: IllegalArgumentException =>
+            logWarning(s"$v can't be cast into $dt, set this value to be null.")
+            null
         }
     }
   }
@@ -131,7 +143,9 @@ object DataTypeUtils {
    */
   def getRowColumnInHBaseRawType(row: InternalRow, index: Int, dt: DataType,
                                  bytesUtils: BytesUtils = BinaryBytesUtils): HBaseRawType = {
-    if (row.isNullAt(index)) return new Array[Byte](0)
+    if (row.isNullAt(index)) {
+      return new Array[Byte](0)
+    }
 
     val bu = bytesUtils.create(dt)
     dt match {

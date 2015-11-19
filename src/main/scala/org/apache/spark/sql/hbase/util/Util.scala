@@ -24,6 +24,8 @@ import java.util.zip.{DeflaterOutputStream, InflaterInputStream}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.hbase.HBaseConfiguration
+import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.UTF8String
 
 object Util {
   val iteration = new AtomicInteger(0)
@@ -50,5 +52,19 @@ object Util {
     val conf = HBaseConfiguration.create
     conf.readFields(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(arr))))
     conf
+  }
+
+  def getValueFromString(value: String, dt: DataType): Any = {
+    dt match {
+      case StringType => UTF8String.fromString(value)
+      case ByteType => value.toByte
+      case ShortType => value.toShort
+      case IntegerType => value.toInt
+      case LongType => value.toLong
+      case FloatType => value.toFloat
+      case DoubleType => value.toDouble
+      case BooleanType => value.toBoolean
+      case _ => throw new IllegalArgumentException(s"Unrecognized data type: $dt")
+    }
   }
 }

@@ -23,6 +23,7 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   var testnm = "Insert all rows to the table from other table"
   test("Insert all rows to the table from other table") {
+    dropLogicalTable("insertTestTable")
     val createQuery =
       s"""CREATE TABLE insertTestTable(
          |  strcol STRING,
@@ -106,6 +107,7 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   testnm = "Insert few columns to the table from other table"
   test("Insert few columns to the table from other table") {
+    dropLogicalTable("insertTestTableFewCols")
     val createQuery =
       s"""CREATE TABLE insertTestTableFewCols(
          |  strcol STRING,
@@ -138,11 +140,12 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
     compareResults(testResult, targetResult)
 
-    runSql("DROP TABLE insertTestTableFewCols")
+    dropLogicalTable("insertTestTableFewCols")
   }
 
   testnm = "Insert into values test"
   test("Insert into values test") {
+    dropLogicalTable("insertValuesTest")
     val createQuery =
       s"""CREATE TABLE insertValuesTest(
          |  strcol STRING,
@@ -171,9 +174,9 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
     val testResult = runSql(testQuery)
     assert(testResult.length == 3, s"$testnm failed on size")
 
-    val exparr = Array(Array("Row0", 'a', 12340, 23456780),
-      Array("Row1", 'b', 12345, 23456789),
-      Array("Row2", 'c', 12342, 23456782))
+    val exparr = Array(Array("Row0", null, 12340, 23456780),
+      Array("Row1", null, 12345, 23456789),
+      Array("Row2", null, 12342, 23456782))
 
     val res = {
       for (rx <- 0 until 3)
@@ -186,6 +189,7 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   testnm = "Insert nullable values test"
   test("Insert nullable values test") {
+    dropLogicalTable("insertNullValuesTest")
     val createQuery =
       s"""CREATE TABLE insertNullValuesTest(
          |  strcol STRING,
@@ -203,9 +207,11 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
         .stripMargin
     runSql(createQuery)
 
-    val insertQuery1 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row0', null,  12340, 23456780)"
-    val insertQuery2 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row1', 'b',   null, 23456789)"
-    val insertQuery3 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row2', 'c',  12342, null)"
+    val insertQuery0 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row0', null,  12340, 23456780, 'abc')"
+    val insertQuery1 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row1', null,  12341, 23456781)"
+    val insertQuery2 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row2', 'b',   null, 23456789)"
+    val insertQuery3 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row3', 'c',  12342)"
+    runSql(insertQuery0)
     runSql(insertQuery1)
     runSql(insertQuery2)
     runSql(insertQuery3)
@@ -213,56 +219,57 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
     val selectAllQuery = "SELECT * FROM insertNullValuesTest ORDER BY strcol"
     val selectAllResult = runSql(selectAllQuery)
 
-    assert(selectAllResult.length == 3, s"$testnm failed on size")
+    assert(selectAllResult.length == 4, s"$testnm failed on size")
 
     var currentResultRow: Int = 0
 
     // check 1st result row
     assert(selectAllResult(currentResultRow).length == 4, s"$testnm failed on row size (# of cols)")
-    assert(selectAllResult(currentResultRow)(0) === s"Row0", s"$testnm failed on returned Row0, key value")
-    assert(selectAllResult(currentResultRow)(1) == null, s"$testnm failed on returned Row0, null col1 value")
-    assert(selectAllResult(currentResultRow)(2) == 12340, s"$testnm failed on returned Row0, col2 value")
-    assert(selectAllResult(currentResultRow)(3) == 23456780, s"$testnm failed on returned Row0, col3 value")
+    assert(selectAllResult(currentResultRow)(0) === s"Row0", s"$testnm failed on returned Row0")
+    assert(selectAllResult(currentResultRow)(1) == null, s"$testnm failed on returned null")
+    assert(selectAllResult(currentResultRow)(2) == 12340, s"$testnm failed on returned 12340")
+    assert(selectAllResult(currentResultRow)(3) == 23456780, s"$testnm failed on returned 23456780")
 
     currentResultRow += 1
 
     // check 2nd result row
-    assert(selectAllResult(currentResultRow)(0) === s"Row1", s"$testnm failed on returned Row1, key value")
-    // skip comparison of actual and expected bytecol value
-    assert(selectAllResult(currentResultRow)(2) == null, s"$testnm failed on returned Row1, null col2 value")
-    assert(selectAllResult(currentResultRow)(3) == 23456789, s"$testnm failed on returned Row1, col3 value")
+    assert(selectAllResult(currentResultRow).length == 4, s"$testnm failed on row size (# of cols)")
+    assert(selectAllResult(currentResultRow)(0) === s"Row1", s"$testnm failed on returned Row1")
+    assert(selectAllResult(currentResultRow)(1) == null, s"$testnm failed on returned null")
+    assert(selectAllResult(currentResultRow)(2) == 12341, s"$testnm failed on returned 12341")
+    assert(selectAllResult(currentResultRow)(3) == 23456781, s"$testnm failed on returned 23456781")
 
     currentResultRow += 1
 
     // check 3rd result row
-    assert(selectAllResult(currentResultRow)(0) === s"Row2", s"$testnm failed on returned Row2, key value")
-    // skip comparison of actual and expected bytecol value
-    assert(selectAllResult(currentResultRow)(2) == 12342, s"$testnm failed on returned Row2, col2 value")
-    assert(selectAllResult(currentResultRow)(3) == null, s"$testnm failed on returned Row2, null col3 value")
+    assert(selectAllResult(currentResultRow).length == 4, s"$testnm failed on row size (# of cols)")
+    assert(selectAllResult(currentResultRow)(0) === s"Row2", s"$testnm failed on returned Row3")
+    assert(selectAllResult(currentResultRow)(1) == null, s"$testnm failed on returned b")
+    assert(selectAllResult(currentResultRow)(2) == null, s"$testnm failed on returned null")
+    assert(selectAllResult(currentResultRow)(3) == 23456789, s"$testnm failed on returned 23456789")
+
+    currentResultRow += 1
+
+    // check 4th result row
+    assert(selectAllResult(currentResultRow).length == 4, s"$testnm failed on row size (# of cols)")
+    assert(selectAllResult(currentResultRow)(0) === s"Row3", s"$testnm failed on returned Row4")
+    assert(selectAllResult(currentResultRow)(1) == null, s"$testnm failed on returned c")
+    assert(selectAllResult(currentResultRow)(2) == 12342, s"$testnm failed on returned 12342")
+    assert(selectAllResult(currentResultRow)(3) == null, s"$testnm failed on returned null")
 
     // test 'where col is not null'
 
     val selectWhereIsNotNullQuery = "SELECT * FROM insertNullValuesTest WHERE intcol IS NOT NULL ORDER BY strcol"
     val selectWhereIsNotNullResult = runSql(selectWhereIsNotNullQuery)
-    assert(selectWhereIsNotNullResult.length == 2, s"$testnm failed on size")
+    assert(selectWhereIsNotNullResult.length == 3, s"$testnm failed on size")
 
-    currentResultRow = 0
-    // check 1st result row
-    assert(selectWhereIsNotNullResult(currentResultRow)(0) === s"Row0", s"$testnm failed on returned Row0, key value")
-    assert(selectWhereIsNotNullResult(currentResultRow)(1) == null, s"$testnm failed on returned Row0, null col1 value")
-    assert(selectWhereIsNotNullResult(currentResultRow)(2) == 12340, s"$testnm failed on returned Row0, col2 value")
-    assert(selectWhereIsNotNullResult(currentResultRow)(3) == 23456780, s"$testnm failed on returned Row0, col3 value")
+    val insertQuery4 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row4', 'd',  'a')"
+    runSql(insertQuery4)
+    val selectRow4Query = "SELECT * FROM insertNullValuesTest where strcol = 'Row4'"
+    val row4Result = runSql(selectRow4Query)
+    assert(row4Result(0)(3) == null, "data type error should return null in no-rowkey")
 
-    currentResultRow += 1
-    // check 2nd result row
-    assert(selectWhereIsNotNullResult(currentResultRow)(0) === s"Row1", s"$testnm failed on returned Row1, key value")
-    // skip comparison of actual and expected bytecol value
-    assert(selectWhereIsNotNullResult(currentResultRow)(2) == null, s"$testnm failed on returned Row1, null col2 value")
-    assert(selectWhereIsNotNullResult(currentResultRow)(3) == 23456789, s"$testnm failed on returned Row1, col3 value")
-
-
-    runSql("  Drop Table insertNullValuesTest")
+    dropLogicalTable("insertNullValuesTest")
   }
-
 
 }
