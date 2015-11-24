@@ -22,7 +22,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.{GenericInternalRow, GenericRow}
 import org.apache.spark.sql.execution.Exchange
 import org.apache.spark.sql.hbase.TestHbase._
-import org.apache.spark.sql.hbase.util.HBaseKVHelper
+import org.apache.spark.sql.hbase.util.{BinaryBytesUtils, HBaseKVHelper}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types._
 
@@ -38,7 +38,7 @@ class HBaseAdditionalQuerySuite extends TestBase {
     val types = Seq(IntegerType, StringType, IntegerType)
 
     def generateRowKey(keys: Array[Any], length: Int = -1) = {
-      val completeRowKey = HBaseKVHelper.makeRowKey(new GenericInternalRow(keys), types)
+      val completeRowKey = HBaseKVHelper.makeRowKey(new GenericInternalRow(keys), types, BinaryBytesUtils)
       if (length < 0) completeRowKey
       else completeRowKey.take(length)
     }

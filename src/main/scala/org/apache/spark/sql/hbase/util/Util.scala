@@ -67,4 +67,10 @@ object Util {
       case _ => throw new IllegalArgumentException(s"Unrecognized data type: $dt")
     }
   }
+
+  def getBytesUtils(encodingFormat: String) = encodingFormat match {
+    case "stringformat" => StringBytesUtils
+    case "hbasebinaryformat" => HbaseBinaryBytesUtils
+    case _ => BinaryBytesUtils
+  }
 }

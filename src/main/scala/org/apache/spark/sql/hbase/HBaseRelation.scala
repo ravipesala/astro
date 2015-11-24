@@ -154,7 +154,7 @@ class HBaseSource extends SchemaRelationProvider {
             case (skv, idx) => Util.getValueFromString(skv, dataTypes(idx))
           }
           new GenericInternalRow(rowArr)
-        }.map(HBaseKVHelper.makeRowKey(_, dataTypes))
+        }.map(HBaseKVHelper.makeRowKey(_, dataTypes, Util.getBytesUtils(encodingFormat)))
       case None => null
     }
 
@@ -197,11 +197,7 @@ private[sql] case class HBaseRelation(
       }
     )
 
-  @transient lazy val bytesUtils: BytesUtils = encodingFormat match {
-    case "stringformat" => StringBytesUtils
-    case "hbasebinaryformat" => HbaseBinaryBytesUtils
-    case _ => BinaryBytesUtils
-  }
+  @transient lazy val bytesUtils: BytesUtils = Util.getBytesUtils(encodingFormat)
 
   lazy val partitionKeys = keyColumns.map(col => output.find(_.name == col.sqlName).get)
 
@@ -1045,7 +1041,7 @@ private[sql] case class HBaseRelation(
    * @param row the row to set values on
    */
   private def setColumn(kv: Cell, projection: (Attribute, Int), row: MutableRow,
-                        bytesUtils: BytesUtils = BinaryBytesUtils): Unit = {
+                        bytesUtils: BytesUtils): Unit = {
     if (kv == null || kv.getValueLength == 0) {
       row.setNullAt(projection._2)
     } else {
@@ -1066,7 +1062,7 @@ private[sql] case class HBaseRelation(
                                result: Result,
                                row: MutableRow): InternalRow = {
     for (i <- projections.indices) {
-      setColumn(result.rawCells()(i), projections(i), row)
+      setColumn(result.rawCells()(i), projections(i), row, bytesUtils)
     }
     row
   }
