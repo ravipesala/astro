@@ -159,9 +159,9 @@ object HBaseKVHelper {
    * @param schema the schema of the line buffer
    * @return
    */
-  private[hbase] def createLineBuffer(schema: Seq[Attribute]): Array[ToBytesUtils] = {
+  private[hbase] def createLineBuffer(schema: Seq[Attribute], byteUtils: BytesUtils): Array[ToBytesUtils] = {
     schema.map{x =>
-      BinaryBytesUtils.create(x.dataType)
+      byteUtils.create(x.dataType)
     }.toArray
   }
 
@@ -174,7 +174,7 @@ object HBaseKVHelper {
   def makeRowKey(row: InternalRow, dataTypeOfKeys: Seq[DataType]): HBaseRawType = {
     val rawKeyCol = dataTypeOfKeys.zipWithIndex.map {
       case (dataType, index) =>
-        (DataTypeUtils.getRowColumnInHBaseRawType(row, index, dataType), dataType)
+        (DataTypeUtils.getRowColumnInHBaseRawType(row, index, dataType, BinaryBytesUtils), dataType)
     }
 
     encodingRawKeyColumns(rawKeyCol)

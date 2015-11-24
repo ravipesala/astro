@@ -31,7 +31,7 @@ import org.apache.spark.shuffle.ShuffleMemoryManager
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GeneratePredicate
-import org.apache.spark.sql.hbase.util.DataTypeUtils
+import org.apache.spark.sql.hbase.util.{BytesUtils, DataTypeUtils}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.unsafe.memory.{MemoryAllocator, ExecutorMemoryManager, TaskMemoryManager}
@@ -166,6 +166,9 @@ class SparkSqlRegionObserver extends BaseRegionObserver {
       val serializedRDD = scan.getAttribute(CoprocessorConstants.COKEY)
       val subPlanRDD: RDD[InternalRow] = HBaseSerializer.deserialize(serializedRDD).asInstanceOf[RDD[InternalRow]]
 
+      val serializedFormat = scan.getAttribute(CoprocessorConstants.COENCFORMAT)
+      val byteUtils = HBaseSerializer.deserialize(serializedFormat).asInstanceOf[BytesUtils]
+
       val taskParaInfo = scan.getAttribute(CoprocessorConstants.COTASK)
       val (stageId, partitionId, taskAttemptId, attemptNumber) =
         HBaseSerializer.deserialize(taskParaInfo).asInstanceOf[(Int, Int, Long, Int)]
@@ -211,7 +214,7 @@ class SparkSqlRegionObserver extends BaseRegionObserver {
               val dataType = outputDataType(i)
               val data = nextRow.get(i, dataType)
               val dataOfBytes: HBaseRawType = {
-                if (data == null) null else DataTypeUtils.dataToBytes(data, dataType)
+                if (data == null) null else DataTypeUtils.dataToBytes(data, dataType, byteUtils)
               }
               results.add(new KeyValue(EmptyArray, EmptyArray, EmptyArray, dataOfBytes))
             }

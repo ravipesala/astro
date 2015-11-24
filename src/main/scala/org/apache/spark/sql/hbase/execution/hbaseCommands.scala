@@ -479,7 +479,7 @@ case class BulkLoadIntoTableCommand(
     val relation = baseRelation
 
     rdd.mapPartitions { iter =>
-      val lineBuffer = HBaseKVHelper.createLineBuffer(relation.output)
+      val lineBuffer = HBaseKVHelper.createLineBuffer(relation.output, relation.bytesUtils)
       val keyBytes = new Array[(HBaseRawType, DataType)](relation.keyColumns.size)
       var skipCount = 100
 

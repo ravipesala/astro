@@ -43,7 +43,7 @@ object DataTypeUtils extends Logging {
    * @return the actual data converted from byte array
    */
   def bytesToData(src: HBaseRawType, offset: Int, length: Int, dt: DataType,
-                  bytesUtils: BytesUtils = BinaryBytesUtils): Any = {
+                  bytesUtils: BytesUtils): Any = {
     dt match {
       case BooleanType => bytesUtils.toBoolean(src, offset, length)
       case ByteType => bytesUtils.toByte(src, offset, length)
@@ -65,7 +65,7 @@ object DataTypeUtils extends Logging {
    */
   def dataToBytes(src: Any,
                   dt: DataType,
-                  bytesUtils: BytesUtils = BinaryBytesUtils): HBaseRawType = {
+                  bytesUtils: BytesUtils): HBaseRawType = {
     // TODO: avoid new instance per invocation
     lazy val bu = bytesUtils.create(dt)
     dt match {
@@ -96,7 +96,7 @@ object DataTypeUtils extends Logging {
                                    offset: Int,
                                    length: Int,
                                    dt: DataType,
-                                   bytesUtils: BytesUtils = BinaryBytesUtils): Unit = {
+                                   bytesUtils: BytesUtils): Unit = {
     dt match {
       case BooleanType => row.setBoolean(index, bytesUtils.toBoolean(src, offset, length))
       case ByteType => row.setByte(index, bytesUtils.toByte(src, offset, length))
@@ -142,10 +142,8 @@ object DataTypeUtils extends Logging {
    * @return the data from the row based on index
    */
   def getRowColumnInHBaseRawType(row: InternalRow, index: Int, dt: DataType,
-                                 bytesUtils: BytesUtils = BinaryBytesUtils): HBaseRawType = {
-    if (row.isNullAt(index)) {
-      return new Array[Byte](0)
-    }
+                                 bytesUtils: BytesUtils): HBaseRawType = {
+    if (row.isNullAt(index)) return new Array[Byte](0)
 
     val bu = bytesUtils.create(dt)
     dt match {
@@ -192,6 +190,18 @@ object DataTypeUtils extends Logging {
           case ShortType => new ShortComparator(bu.toBytes(expression.value.asInstanceOf[Short]))
           case StringType => new BinaryComparator(bu.toBytes(expression.value))
           case _ => throw new Exception("Cannot convert the data type using CustomComparator")
+        }
+      case bbu: HbaseBinaryBytesUtils =>
+        expression.dataType match {
+          case BooleanType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Boolean]))
+          case ByteType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Byte]))
+          case DoubleType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Double]))
+          case FloatType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Float]))
+          case IntegerType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Int]))
+          case LongType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Long]))
+          case ShortType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Short]))
+          case StringType => new BinaryComparator(bu.toBytes(expression.value))
+          case _ => throw new Exception("Cannot convert the data type using BinaryComparator")
         }
     }
   }

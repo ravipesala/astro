@@ -26,7 +26,7 @@ import org.apache.spark.sql.catalyst.rules.RuleExecutor
 import org.apache.spark.sql.execution.{EnsureRowFormats, EnsureRequirements, SparkPlan}
 import org.apache.spark.sql.hbase.catalyst.analysis.ReplaceOutput
 import org.apache.spark.sql.hbase.execution.{AddCoprocessor, HBaseStrategies}
-import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.sql.hive.{HBaseConversions, HiveContext}
 
 class HBaseSQLContext(sc: SparkContext) extends HiveContext(sc) {
   self =>
@@ -45,7 +45,7 @@ class HBaseSQLContext(sc: SparkContext) extends HiveContext(sc) {
   @transient
   override protected[sql] lazy val analyzer: Analyzer =
     new Analyzer(catalog, functionRegistry, conf) {
-      override val extendedResolutionRules = ReplaceOutput :: Nil
+      override val extendedResolutionRules = ReplaceOutput :: HBaseConversions(self) :: Nil
     }
 
   experimental.extraStrategies = Seq((new SparkPlanner with HBaseStrategies).HBaseDataSource)

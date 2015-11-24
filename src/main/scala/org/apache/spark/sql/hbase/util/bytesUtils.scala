@@ -21,7 +21,7 @@ import org.apache.spark.sql.hbase._
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
-trait BytesUtils {
+trait BytesUtils extends Serializable {
   def create(dataType: DataType): ToBytesUtils
 
   def toUTF8String(input: HBaseRawType, offset: Int, length: Int): UTF8String
@@ -88,7 +88,7 @@ trait BytesUtils {
   }
 }
 
-trait ToBytesUtils {
+trait ToBytesUtils extends Serializable {
   val dataType: DataType
   def toBytes(input: UTF8String): HBaseRawType
   def toBytes(input: Byte): HBaseRawType
@@ -340,6 +340,118 @@ class StringBytesUtils(var buffer: HBaseRawType, dt: DataType) extends ToBytesUt
 
   def toBytes(input: Long): HBaseRawType = {
     buffer = input.toString.getBytes
+    buffer
+  }
+
+  def toBytes(input: Any): HBaseRawType = {
+    input match {
+      case item: Boolean => toBytes(item)
+      case item: Byte => toBytes(item)
+      case item: Double => toBytes(item)
+      case item: Float => toBytes(item)
+      case item: Int => toBytes(item)
+      case item: Long => toBytes(item)
+      case item: Short => toBytes(item)
+      case item: String => toBytes(UTF8String.fromString(item))
+      case item: UTF8String => toBytes(item)
+    }
+  }
+}
+
+object HbaseBinaryBytesUtils extends BytesUtils{
+  def create(dataType: DataType): ToBytesUtils = {
+    dataType match {
+      case BooleanType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_BOOLEAN), BooleanType)
+      case ByteType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_BYTE), ByteType)
+      case DoubleType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_DOUBLE), DoubleType)
+      case FloatType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_FLOAT), FloatType)
+      case IntegerType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_INT), IntegerType)
+      case LongType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_LONG), LongType)
+      case ShortType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_SHORT), ShortType)
+      case StringType => new HbaseBinaryBytesUtils(null, StringType)
+    }
+  }
+
+  def toUTF8String(input: HBaseRawType, offset: Int, length: Int): UTF8String = {
+    UTF8String.fromBytes(input, offset, length)
+  }
+
+  def toByte(input: HBaseRawType, offset: Int, length: Int = 0): Byte = {
+    // Flip sign bit back
+    val v: Int = input(offset)
+    v.asInstanceOf[Byte]
+  }
+
+  def toBoolean(input: HBaseRawType, offset: Int, length: Int = 0): Boolean = {
+    input(offset) != 0
+  }
+
+  def toDouble(input: HBaseRawType, offset: Int, length: Int = 0): Double = {
+    Bytes.toDouble(input, offset)
+  }
+
+  def toShort(input: HBaseRawType, offset: Int, length: Int = 0): Short = {
+    Bytes.toShort(input, offset)
+  }
+
+  def toFloat(input: HBaseRawType, offset: Int, length: Int = 0): Float = {
+    Bytes.toFloat(input, offset)
+  }
+
+  def toInt(input: HBaseRawType, offset: Int, length: Int = 0): Int = {
+    Bytes.toInt(input, offset)
+  }
+
+  def toLong(input: HBaseRawType, offset: Int, length: Int = 0): Long = {
+    Bytes.toLong(input, offset)
+  }
+}
+
+class HbaseBinaryBytesUtils(var buffer: HBaseRawType, dt: DataType) extends ToBytesUtils{
+  override val dataType = dt
+
+  def toBytes(input: UTF8String): HBaseRawType = {
+    buffer = input.getBytes
+    buffer
+  }
+
+  def toBytes(input: Byte): HBaseRawType = {
+    // Flip sign bit so that Byte is binary comparable
+    buffer(0) = (input).asInstanceOf[Byte]
+    buffer
+  }
+
+  def toBytes(input: Boolean): HBaseRawType = {
+    if (input) {
+      buffer(0) = (-1).asInstanceOf[Byte]
+    } else {
+      buffer(0) = 0.asInstanceOf[Byte]
+    }
+    buffer
+  }
+
+  def toBytes(input: Double): HBaseRawType = {
+    Bytes.putDouble(buffer, 0, input)
+    buffer
+  }
+
+  def toBytes(input: Short): HBaseRawType = {
+    Bytes.putShort(buffer, 0, input)
+    buffer
+  }
+
+  def toBytes(input: Float): HBaseRawType = {
+    Bytes.putFloat(buffer, 0, input)
+    buffer
+  }
+
+  def toBytes(input: Int): HBaseRawType = {
+    Bytes.putInt(buffer, 0, input)
+    buffer
+  }
+
+  def toBytes(input: Long): HBaseRawType = {
+    Bytes.putLong(buffer, 0, input)
     buffer
   }
 

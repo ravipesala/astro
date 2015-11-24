@@ -408,14 +408,17 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
   def getDataType(dataType: String): DataType = {
     if (dataType.equalsIgnoreCase(StringType.typeName)) {
       StringType
-    } else if (dataType.equalsIgnoreCase(ByteType.typeName)) {
+    } else if (dataType.equalsIgnoreCase(ByteType.typeName) ||
+      dataType.equalsIgnoreCase("tinyint")) {
       ByteType
-    } else if (dataType.equalsIgnoreCase(ShortType.typeName)) {
+    } else if (dataType.equalsIgnoreCase(ShortType.typeName) ||
+      dataType.equalsIgnoreCase("smallint")) {
       ShortType
     } else if (dataType.equalsIgnoreCase(IntegerType.typeName) ||
       dataType.equalsIgnoreCase("int")) {
       IntegerType
-    } else if (dataType.equalsIgnoreCase(LongType.typeName)) {
+    } else if (dataType.equalsIgnoreCase(LongType.typeName) ||
+      dataType.equalsIgnoreCase("bigint")) {
       LongType
     } else if (dataType.equalsIgnoreCase(FloatType.typeName)) {
       FloatType

@@ -44,6 +44,8 @@ object TestHbase
 
   @transient lazy val hbaseAdmin: HBaseAdmin = new HBaseAdmin(sparkContext.hadoopConfiguration)
 
+  def runSqlInHive(sql: String) = runSqlHive(sql)
+
   // The following operation will initialize the HBaseCatalog.
   // And it should be done after starting MiniHBaseCluster
   hbaseCatalog.deploySuccessfully_internal = Some(true)

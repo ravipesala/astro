@@ -444,15 +444,15 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
     val value = node.currentValue
     var canAddOne: Boolean = true
     if (dt == StringType) {
-      val newString = BinaryBytesUtils.addOneString(BinaryBytesUtils.create(dt).toBytes(value))
-      val newValue = DataTypeUtils.bytesToData(newString, 0, newString.length, dt)
+      val newString = relation.bytesUtils.addOneString(relation.bytesUtils.create(dt).toBytes(value))
+      val newValue = DataTypeUtils.bytesToData(newString, 0, newString.length, dt, relation.bytesUtils)
       node.currentValue = newValue
     } else {
-      val newArray = BinaryBytesUtils.addOne(BinaryBytesUtils.create(dt).toBytes(value))
+      val newArray = relation.bytesUtils.addOne(relation.bytesUtils.create(dt).toBytes(value))
       if (newArray == null) {
         canAddOne = false
       } else {
-        val newValue = DataTypeUtils.bytesToData(newArray, 0, newArray.length, dt)
+        val newValue = DataTypeUtils.bytesToData(newArray, 0, newArray.length, dt, relation.bytesUtils)
         node.currentValue = newValue
       }
     }
@@ -487,7 +487,7 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
       node.children(node.currentChildIndex).currentValue != null) {
       val levelNode: Node = node.children(node.currentChildIndex)
       val dt = levelNode.dt
-      val value = BinaryBytesUtils.create(dt).toBytes(levelNode.currentValue)
+      val value = relation.bytesUtils.create(dt).toBytes(levelNode.currentValue)
       list = list :+(value, dt)
       if (levelNode.dimension < relation.dimSize - 1) {
         generateCPRs(levelNode)

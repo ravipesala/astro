@@ -172,7 +172,7 @@ class HBaseSource extends SchemaRelationProvider {
  * @param context HBaseSQLContext
  */
 @SerialVersionUID(15298736227428789L)
-private[hbase] case class HBaseRelation(
+private[sql] case class HBaseRelation(
                                          tableName: String,
                                          hbaseNamespace: String,
                                          hbaseTableName: String,
@@ -199,6 +199,7 @@ private[hbase] case class HBaseRelation(
 
   @transient lazy val bytesUtils: BytesUtils = encodingFormat match {
     case "stringformat" => StringBytesUtils
+    case "hbasebinaryformat" => HbaseBinaryBytesUtils
     case _ => BinaryBytesUtils
   }
 
@@ -338,7 +339,7 @@ private[hbase] case class HBaseRelation(
          */
         val finalRowKey = getFinalKey(bound)
         val (start, length) = HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns)(index)
-        Some(DataTypeUtils.bytesToData(finalRowKey, start, length, dt).asInstanceOf[dt.InternalType])
+        Some(DataTypeUtils.bytesToData(finalRowKey, start, length, dt, bytesUtils).asInstanceOf[dt.InternalType])
       }
     }
 
@@ -395,7 +396,7 @@ private[hbase] case class HBaseRelation(
       val items: Seq[(Any, AtomicType)] = cpr.prefix
       val head: Seq[(HBaseRawType, AtomicType)] = items.map {
         case (itemValue, itemType) =>
-          (DataTypeUtils.dataToBytes(itemValue, itemType), itemType)
+          (DataTypeUtils.dataToBytes(itemValue, itemType, bytesUtils), itemType)
       }
 
       val headExpression: Seq[Expression] = items.zipWithIndex.map { case (item, index) =>
@@ -462,7 +463,7 @@ private[hbase] case class HBaseRelation(
         if (cpr.lastRange.isPoint) {
           // the last range is a point
           val tail: (HBaseRawType, AtomicType) =
-            (DataTypeUtils.dataToBytes(startKey.get, keyType), keyType)
+            (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
           val rowKeys = head :+ tail
           val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
           if (cpr.prefix.size == keyColumns.size - 1) {
@@ -476,7 +477,7 @@ private[hbase] case class HBaseRelation(
           // the last range is not a point
           val startFilter: RowFilter = if (startKey.isDefined) {
             val tail: (HBaseRawType, AtomicType) =
-              (DataTypeUtils.dataToBytes(startKey.get, keyType), keyType)
+              (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
             val rowKeys = head :+ tail
             val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
             if (cpr.prefix.size == keyColumns.size - 1) {
@@ -500,7 +501,7 @@ private[hbase] case class HBaseRelation(
           }
           val endFilter: RowFilter = if (endKey.isDefined) {
             val tail: (HBaseRawType, AtomicType) =
-              (DataTypeUtils.dataToBytes(endKey.get, keyType), keyType)
+              (DataTypeUtils.dataToBytes(endKey.get, keyType, bytesUtils), keyType)
             val rowKeys = head :+ tail
             val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
             if (cpr.prefix.size == keyColumns.size - 1) {
@@ -784,7 +785,7 @@ private[hbase] case class HBaseRelation(
       val rawKeyCol = keyColumns.map(
         kc => {
           val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
-            internalRow, kc.ordinal, kc.dataType)
+            internalRow, kc.ordinal, kc.dataType, bytesUtils)
           if (rowColumn.isEmpty) {
             isSkip = true
           }
@@ -847,7 +848,7 @@ private[hbase] case class HBaseRelation(
       val rawKeyCol = keyColumns.map(
         kc => {
           val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
-            internalRow, kc.ordinal, kc.dataType)
+            internalRow, kc.ordinal, kc.dataType, bytesUtils)
           (rowColumn, kc.dataType)
         }
       )
@@ -1119,7 +1120,7 @@ private[hbase] case class HBaseRelation(
           case keyIndex: Int =>
             val (start, length) = rowKeys(keyIndex)
             DataTypeUtils.setRowColumnFromHBaseRawType(
-              row, p._2, result.head.getRowArray, start, length, keyColumns(keyIndex).dataType)
+              row, p._2, result.head.getRowArray, start, length, keyColumns(keyIndex).dataType, bytesUtils)
         }
     }
     row
@@ -1138,7 +1139,7 @@ private[hbase] case class HBaseRelation(
           case keyIndex: Int =>
             val (start, length) = rowKeys(keyIndex)
             DataTypeUtils.setRowColumnFromHBaseRawType(
-              row, p._2, result.getRow, start, length, keyColumns(keyIndex).dataType)
+              row, p._2, result.getRow, start, length, keyColumns(keyIndex).dataType, bytesUtils)
         }
     }
     row
@@ -1230,7 +1231,7 @@ private[hbase] case class HBaseRelation(
 
       HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns).
         zipWithIndex.map(pi => DataTypeUtils.bytesToData(finalRowKey,
-        pi._1._1, pi._1._2, keyColumns(pi._2).dataType))
+        pi._1._1, pi._1._2, keyColumns(pi._2).dataType, bytesUtils))
     }
   }
 }
