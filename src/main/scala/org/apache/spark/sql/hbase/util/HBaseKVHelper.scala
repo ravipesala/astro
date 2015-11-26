@@ -17,11 +17,15 @@
 
 package org.apache.spark.sql.hbase.util
 
+import java.sql.{Timestamp, Date}
+
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
+import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.hbase._
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.UTF8String
 
 object HBaseKVHelper {
   val delimiter: Byte = 0
@@ -144,6 +148,8 @@ object HBaseKVHelper {
             case LongType => bu.toBytes(v.toLong)
             case ShortType => bu.toBytes(v.toShort)
             case StringType => bu.toBytes(v)
+            case DateType => bu.toBytes(DateTimeUtils.stringToDate(UTF8String.fromString(v)).get)
+            case TimestampType => bu.toBytes(DateTimeUtils.stringToTimestamp(UTF8String.fromString(v)).get)
           }
         } catch {
           case e: NumberFormatException =>

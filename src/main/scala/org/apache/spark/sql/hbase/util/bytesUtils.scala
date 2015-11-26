@@ -112,6 +112,8 @@ object BinaryBytesUtils extends BytesUtils{
       case LongType => new BinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_LONG), LongType)
       case ShortType => new BinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_SHORT), ShortType)
       case StringType => new BinaryBytesUtils(null, StringType)
+      case DateType => new BinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_INT), DateType)
+      case TimestampType => new BinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_LONG), TimestampType)
     }
   }
 
@@ -244,6 +246,8 @@ class BinaryBytesUtils(var buffer: HBaseRawType, dt: DataType) extends ToBytesUt
       case item: Short => toBytes(item)
       case item: String => toBytes(UTF8String.fromString(item))
       case item: UTF8String => toBytes(item)
+      case item: DateType => toBytes(item)
+      case item: TimestampType => toBytes(item)
     }
   }
 }
@@ -260,6 +264,8 @@ object StringBytesUtils extends BytesUtils{
       case LongType => new StringBytesUtils(new HBaseRawType(Bytes.SIZEOF_LONG), LongType)
       case ShortType => new StringBytesUtils(new HBaseRawType(Bytes.SIZEOF_SHORT), ShortType)
       case StringType => new StringBytesUtils(null, StringType)
+      case DateType => new StringBytesUtils(new HBaseRawType(Bytes.SIZEOF_INT), DateType)
+      case TimestampType => new StringBytesUtils(new HBaseRawType(Bytes.SIZEOF_LONG), TimestampType)
     }
   }
 
@@ -354,6 +360,8 @@ class StringBytesUtils(var buffer: HBaseRawType, dt: DataType) extends ToBytesUt
       case item: Short => toBytes(item)
       case item: String => toBytes(UTF8String.fromString(item))
       case item: UTF8String => toBytes(item)
+      case item: DateType => toBytes(item)
+      case item: TimestampType => toBytes(item)
     }
   }
 }
@@ -369,6 +377,8 @@ object HbaseBinaryBytesUtils extends BytesUtils{
       case LongType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_LONG), LongType)
       case ShortType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_SHORT), ShortType)
       case StringType => new HbaseBinaryBytesUtils(null, StringType)
+      case DateType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_INT), DateType)
+      case TimestampType => new HbaseBinaryBytesUtils(new HBaseRawType(Bytes.SIZEOF_LONG), TimestampType)
     }
   }
 
@@ -466,6 +476,8 @@ class HbaseBinaryBytesUtils(var buffer: HBaseRawType, dt: DataType) extends ToBy
       case item: Short => toBytes(item)
       case item: String => toBytes(UTF8String.fromString(item))
       case item: UTF8String => toBytes(item)
+      case item: DateType => toBytes(item)
+      case item: TimestampType => toBytes(item)
     }
   }
 }
