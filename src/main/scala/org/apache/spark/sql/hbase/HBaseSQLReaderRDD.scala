@@ -36,6 +36,7 @@ object CoprocessorConstants {
   final val COINDEX: String = "parIdx"
   final val COTYPE: String = "dtType"
   final val COTASK: String = "tskCtx"
+  final val COENCFORMAT: String = "tskEncodingFormat"
 }
 
 /**
@@ -121,14 +122,14 @@ class HBaseSQLReaderRDD(val relation: HBaseRelation,
     val prefix = cpr.prefix
     val head: Seq[(HBaseRawType, AtomicType)] = prefix.map {
       case (itemValue, itemType) =>
-        (DataTypeUtils.dataToBytes(itemValue, itemType), itemType)
+        (DataTypeUtils.dataToBytes(itemValue, itemType, relation.bytesUtils), itemType)
     }
 
     val key = if (isStart) cpr.lastRange.start else cpr.lastRange.end
     val keyType = cpr.lastRange.dt
     val list = if (key.isDefined) {
       val tail: (HBaseRawType, AtomicType) = {
-        (DataTypeUtils.dataToBytes(key.get, keyType), keyType)
+        (DataTypeUtils.dataToBytes(key.get, keyType, relation.bytesUtils), keyType)
       }
       head :+ tail
     } else {
@@ -240,6 +241,7 @@ class HBaseSQLReaderRDD(val relation: HBaseRelation,
     scan.setAttribute(CoprocessorConstants.COTYPE, HBaseSerializer.serialize(outputDataType))
     scan.setAttribute(CoprocessorConstants.COKEY, HBaseSerializer.serialize(newSubplanRDD))
     scan.setAttribute(CoprocessorConstants.COTASK, HBaseSerializer.serialize(taskContextPara))
+    scan.setAttribute(CoprocessorConstants.COENCFORMAT, HBaseSerializer.serialize(relation.bytesUtils))
   }
 
   // For critical-point-based predicate pushdown
@@ -336,7 +338,7 @@ class HBaseSQLReaderRDD(val relation: HBaseRelation,
         val end = if (endRowKey != null) {
           val finalKey: HBaseRawType = {
             if (endInclusive || endKey.isEmpty) {
-              BinaryBytesUtils.addOne(endRowKey)
+              relation.bytesUtils.addOne(endRowKey)
             } else {
               endRowKey
             }

@@ -36,35 +36,37 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
     super.afterAll()
   }
 
-  test("Insert Into table in StringFormat") {
-    try {
-      dropLogicalTable("tb0")
-    } catch {
-      case e: Throwable => logInfo(e.getMessage)
-    }
-    sql( """CREATE TABLE tb0 (
-           |  column2 INTEGER,
-           |  column1 INTEGER,
-           |  column4 FLOAT,
-           |  column3 SMALLINT
-           |)
-           |USING org.apache.spark.sql.hbase.HBaseSource
-           |OPTIONS(
-           |  tableName "tb0",
-           |  hbaseTableName "testNamespace.ht0",
-           |  keyCols "column1",
-           |  colsMapping "column2=family0.qualifier0, column3=family1.qualifier1, column4=family2.qualifier2",
-           |  encodingFormat "StringFormat"
-           )""".stripMargin
-    )
-
-    assert(sql( """SELECT * FROM tb0""").collect().length == 0)
-    sql( """INSERT INTO TABLE tb0 SELECT col4,col4,col6,col3 FROM ta""")
-    assert(sql( """SELECT * FROM tb0""").collect().length == 14)
-
-    dropLogicalTable("tb0")
-    dropNativeHbaseTable("testNamespace.ht0")
-  }
+//This test case is not valid since the source table and the destination tables should
+//  have same encoding format.
+//  test("Insert Into table in StringFormat") {
+//    try {
+//      dropLogicalTable("tb0")
+//    } catch {
+//      case e: Throwable => logInfo(e.getMessage)
+//    }
+//    sql( """CREATE TABLE tb0 (
+//           |  column2 INTEGER,
+//           |  column1 INTEGER,
+//           |  column4 FLOAT,
+//           |  column3 SMALLINT
+//           |)
+//           |USING org.apache.spark.sql.hbase.HBaseSource
+//           |OPTIONS(
+//           |  tableName "tb0",
+//           |  hbaseTableName "testNamespace.ht0",
+//           |  keyCols "column1",
+//           |  colsMapping "column2=family0.qualifier0, column3=family1.qualifier1, column4=family2.qualifier2",
+//           |  encodingFormat "StringFormat"
+//           )""".stripMargin
+//    )
+//
+//    assert(sql( """SELECT * FROM tb0""").collect().length == 0)
+//    sql( """INSERT INTO TABLE tb0 SELECT col4,col4,col6,col3 FROM ta""")
+//    assert(sql( """SELECT * FROM tb0""").collect().length == 14)
+//
+//    dropLogicalTable("tb0")
+//    dropNativeHbaseTable("testNamespace.ht0")
+//  }
 
   test("Insert and Query Single Row") {
     try {

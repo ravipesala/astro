@@ -16,14 +16,18 @@
 */
 package org.apache.spark.sql.hbase.util
 
+import java.sql.{Timestamp, Date}
+
 import org.apache.hadoop.hbase.filter.{BinaryComparator, ByteArrayComparable}
 import org.apache.spark.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Literal, MutableRow}
+import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.execution.SparkSqlSerializer
 import org.apache.spark.sql.hbase._
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.UTF8String
 
 /**
  * Data Type conversion utilities
@@ -32,7 +36,7 @@ object DataTypeUtils extends Logging {
 
   val supportedDataTypes: Set[DataType] = (IntegerType :: StringType :: LongType
     :: ShortType :: BooleanType :: ByteType
-    :: DoubleType :: FloatType :: Nil).toSet
+    :: DoubleType :: FloatType :: DateType :: TimestampType :: Nil).toSet
 
   /**
    * convert the byte array to data
@@ -43,7 +47,7 @@ object DataTypeUtils extends Logging {
    * @return the actual data converted from byte array
    */
   def bytesToData(src: HBaseRawType, offset: Int, length: Int, dt: DataType,
-                  bytesUtils: BytesUtils = BinaryBytesUtils): Any = {
+                  bytesUtils: BytesUtils): Any = {
     dt match {
       case BooleanType => bytesUtils.toBoolean(src, offset, length)
       case ByteType => bytesUtils.toByte(src, offset, length)
@@ -53,6 +57,8 @@ object DataTypeUtils extends Logging {
       case LongType => bytesUtils.toLong(src, offset, length)
       case ShortType => bytesUtils.toShort(src, offset, length)
       case StringType => bytesUtils.toUTF8String(src, offset, length)
+      case DateType => bytesUtils.toInt(src, offset, length)
+      case TimestampType => bytesUtils.toLong(src, offset, length)
       case _ => throw new Exception("Unsupported HBase SQL Data Type")
     }
   }
@@ -65,7 +71,7 @@ object DataTypeUtils extends Logging {
    */
   def dataToBytes(src: Any,
                   dt: DataType,
-                  bytesUtils: BytesUtils = BinaryBytesUtils): HBaseRawType = {
+                  bytesUtils: BytesUtils): HBaseRawType = {
     // TODO: avoid new instance per invocation
     lazy val bu = bytesUtils.create(dt)
     dt match {
@@ -77,6 +83,8 @@ object DataTypeUtils extends Logging {
       case LongType => bu.toBytes(src.asInstanceOf[Long])
       case ShortType => bu.toBytes(src.asInstanceOf[Short])
       case StringType => bu.toBytes(src)
+      case DateType => bu.toBytes(src.asInstanceOf[Int])
+      case TimestampType => bu.toBytes(src.asInstanceOf[Long])
       case _ => SparkSqlSerializer.serialize[Any](src) //TODO
     }
   }
@@ -96,7 +104,7 @@ object DataTypeUtils extends Logging {
                                    offset: Int,
                                    length: Int,
                                    dt: DataType,
-                                   bytesUtils: BytesUtils = BinaryBytesUtils): Unit = {
+                                   bytesUtils: BytesUtils): Unit = {
     dt match {
       case BooleanType => row.setBoolean(index, bytesUtils.toBoolean(src, offset, length))
       case ByteType => row.setByte(index, bytesUtils.toByte(src, offset, length))
@@ -106,6 +114,8 @@ object DataTypeUtils extends Logging {
       case LongType => row.setLong(index, bytesUtils.toLong(src, offset, length))
       case ShortType => row.setShort(index, bytesUtils.toShort(src, offset, length))
       case StringType => row.update(index, bytesUtils.toUTF8String(src, offset, length))
+      case DateType => row.setInt(index, bytesUtils.toInt(src, offset, length))
+      case TimestampType => row.setLong(index, bytesUtils.toLong(src, offset, length))
       case _ => row.update(index, SparkSqlSerializer.deserialize[Any](src)) //TODO
     }
   }
@@ -125,6 +135,8 @@ object DataTypeUtils extends Logging {
             case LongType => v.toLong
             case ShortType => v.toShort
             case StringType => v
+            case DateType => DateTimeUtils.stringToDate(UTF8String.fromString(v)).get
+            case StringType => DateTimeUtils.stringToTimestamp(UTF8String.fromString(v)).get
           }
         } catch {
           case _: NumberFormatException | _: IllegalArgumentException =>
@@ -142,10 +154,8 @@ object DataTypeUtils extends Logging {
    * @return the data from the row based on index
    */
   def getRowColumnInHBaseRawType(row: InternalRow, index: Int, dt: DataType,
-                                 bytesUtils: BytesUtils = BinaryBytesUtils): HBaseRawType = {
-    if (row.isNullAt(index)) {
-      return new Array[Byte](0)
-    }
+                                 bytesUtils: BytesUtils): HBaseRawType = {
+    if (row.isNullAt(index)) return new Array[Byte](0)
 
     val bu = bytesUtils.create(dt)
     dt match {
@@ -157,6 +167,8 @@ object DataTypeUtils extends Logging {
       case LongType => bu.toBytes(row.getLong(index))
       case ShortType => bu.toBytes(row.getShort(index))
       case StringType => bu.toBytes(row.getString(index))
+      case DateType => bu.toBytes(row.getInt(index))
+      case TimestampType => bu.toBytes(row.getLong(index))
       case _ => throw new Exception("Unsupported HBase SQL Data Type")
     }
   }
@@ -192,6 +204,18 @@ object DataTypeUtils extends Logging {
           case ShortType => new ShortComparator(bu.toBytes(expression.value.asInstanceOf[Short]))
           case StringType => new BinaryComparator(bu.toBytes(expression.value))
           case _ => throw new Exception("Cannot convert the data type using CustomComparator")
+        }
+      case bbu: HbaseBinaryBytesUtils =>
+        expression.dataType match {
+          case BooleanType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Boolean]))
+          case ByteType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Byte]))
+          case DoubleType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Double]))
+          case FloatType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Float]))
+          case IntegerType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Int]))
+          case LongType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Long]))
+          case ShortType => new BinaryComparator(bu.toBytes(expression.value.asInstanceOf[Short]))
+          case StringType => new BinaryComparator(bu.toBytes(expression.value))
+          case _ => throw new Exception("Cannot convert the data type using BinaryComparator")
         }
     }
   }
