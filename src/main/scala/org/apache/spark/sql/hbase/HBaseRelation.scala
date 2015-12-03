@@ -38,6 +38,7 @@ import org.apache.spark.unsafe.types.UTF8String
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 class HBaseSource extends SchemaRelationProvider {
@@ -50,7 +51,7 @@ class HBaseSource extends SchemaRelationProvider {
     val optSet = Set("hbasetablename", "keycols", "colsmapping")
     val keySet = parameters.keySet.map(_.toLowerCase)
     if (!(optSet.intersect(keySet).size == 3)) {
-      throw new Exception("Options keys(hbaseTableName, keyCols, colsMapping) are obligatory")
+      throw new scala.Exception("Options keys(hbaseTableName, keyCols, colsMapping) are obligatory")
     }
 
     // As we cann't get tableName on CREATE clause, so we can not check whether if the tableName on
@@ -68,35 +69,35 @@ class HBaseSource extends SchemaRelationProvider {
       ""
     }
 
-    schema.fields.foreach { filed =>
-      if (!DataTypeUtils.supportedDataTypes.contains(filed.dataType)) {
-        throw new Exception(s"Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
-      }
-    }
-
     val colsSeq = schema.fieldNames
     val keyCols = parameters("keyCols").split(",").map(_.trim)
     val colsMapping = parameters("colsMapping").split(",").map(_.trim)
     val encodingFormat =
       parameters.get("encodingFormat") match {
         case Some(encoding) => encoding.toLowerCase
-        case None => "binaryformat"
+        case None => FieldFactory.BINARY_FORMAT
       }
+
+    schema.fields.foreach { filed =>
+      if (!DataTypeUtils.supportedDataTypes.contains(filed.dataType) && keyCols.contains(filed.name)) {
+        throw new Exception(s"Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
+      }
+    }
 
     val infoMap: Map[String, (String, String)] =
       colsMapping.map { colMapping =>
         val mapping = colMapping.split("=")
         if (mapping.length != 2) {
-          throw new Exception(s"Syntax Error of column mapping($colMapping), " +
+          throw new scala.Exception(s"Syntax Error of column mapping($colMapping), " +
             "(sqlCol=colFamily.colQualifier, needs \"=\")")
         }
         if (!colsSeq.contains(mapping(0))) {
-          throw new Exception(s"Syntax Error of column mapping($colMapping), " +
+          throw new scala.Exception(s"Syntax Error of column mapping($colMapping), " +
             s"${mapping(0)} is not a column")
         }
         val info = mapping(1).split("\\.")
         if (info.length != 2) {
-          throw new Exception(s"Syntax Error of column mapping($colMapping), " +
+          throw new scala.Exception(s"Syntax Error of column mapping($colMapping), " +
             "(sqlCol=colFamily.colQualifier, needs \".\")")
         }
         mapping(0) ->(info(0), info(1))
@@ -116,13 +117,26 @@ class HBaseSource extends SchemaRelationProvider {
       (structType.name, structType.dataType, family, qualifier)
     }
 
+    var extraParams = Map[String, String]()
+    def addExraParam(param: String) {
+      parameters.get(param) match {
+        case Some(value) =>
+          extraParams += param -> value
+        case _ =>
+      }
+    }
+    addExraParam(FieldFactory.COLLECTION_SEPERATOR)
+    addExraParam(FieldFactory.MAPKEY_SEPERATOR)
+    val separators = FieldFactory.collectSeperators(extraParams)
+
     val allColumns = colsSeq.map {
       case name =>
         if (keyCols.contains(name)) {
           KeyColumn(
             name,
             keyColsWithDataType.get(name).get,
-            keyCols.indexWhere(_ == name)
+            keyCols.indexWhere(_ == name),
+            FieldFactory.createFieldData(keyColsWithDataType.get(name).get, encodingFormat, separators)
           )
         } else {
           val nonKeyCol = nonKeyColsWithDataType.find(_._1 == name).get
@@ -130,7 +144,8 @@ class HBaseSource extends SchemaRelationProvider {
             name,
             nonKeyCol._2,
             nonKeyCol._3,
-            nonKeyCol._4
+            nonKeyCol._4,
+            FieldFactory.createFieldData(nonKeyCol._2, encodingFormat, separators)
           )
         }
     }
@@ -147,19 +162,20 @@ class HBaseSource extends SchemaRelationProvider {
         splitKeysInfo.split(groupDelimiter).map(_.trim).map { splitKeyStr: String =>
           val splitKeyArr = splitKeyStr.split(dataDelimiter).map(_.trim)
           if (splitKeyArr.length != dataTypes.length) {
-            throw new Exception(s"There are ${dataTypes.length} keys, " +
+            throw new scala.Exception(s"There are ${dataTypes.length} keys, " +
               s"but have ${splitKeyArr.length} split key values")
           }
           val rowArr: Array[Any] = splitKeyArr.zipWithIndex.map {
-            case (skv, idx) => Util.getValueFromString(skv, dataTypes(idx))
+            case (skv, idx) =>
+              FieldFactory.createFieldData(dataTypes(idx), encodingFormat, separators).parseStringToData(skv)
           }
           new GenericInternalRow(rowArr)
-        }.map(HBaseKVHelper.makeRowKey(_, dataTypes, Util.getBytesUtils(encodingFormat)))
+        }.map(HBaseKVHelper.makeRowKey(_, dataTypes, encodingFormat, extraParams))
       case None => null
     }
 
     hbaseContext.hbaseCatalog.createTable(
-      tableName, rawNamespace, hbaseTable, allColumns, splitKeys, encodingFormat)
+      tableName, rawNamespace, hbaseTable, allColumns, splitKeys, separators, encodingFormat)
   }
 }
 
@@ -178,7 +194,9 @@ private[sql] case class HBaseRelation(
                                          hbaseTableName: String,
                                          allColumns: Seq[AbstractColumn],
                                          deploySuccessfully: Option[Boolean],
-                                         encodingFormat: String = "binaryformat")
+                                         separators: Array[Byte],
+                                         encodingFormat: String = FieldFactory.BINARY_FORMAT,
+                                         hiveStorage: Boolean = false)
                                        (@transient var context: SQLContext)
   extends BaseRelation with InsertableRelation with Serializable with Logging {
 
@@ -197,12 +215,18 @@ private[sql] case class HBaseRelation(
       }
     )
 
-  @transient lazy val bytesUtils: BytesUtils = Util.getBytesUtils(encodingFormat)
+//  @transient lazy val bytesUtils: BytesUtils = Util.getBytesUtils(encodingFormat)
 
   lazy val partitionKeys = keyColumns.map(col => output.find(_.name == col.sqlName).get)
 
+  lazy val fieldReadersMap = {
+    val fieldCache = new FieldDataCache(encodingFormat, separators, hiveStorage)
+    fieldCache.setFields(allColumns.map(f=> (f.dataType, f.fieldReader)).toMap)
+    fieldCache
+  }
+
   @transient lazy val columnMap = allColumns.map {
-    case key: KeyColumn => (key.sqlName, key.order)
+    case key: KeyColumn => (key.sqlName, key)
     case nonKey: NonKeyColumn => (nonKey.sqlName, nonKey)
   }.toMap
 
@@ -335,7 +359,7 @@ private[sql] case class HBaseRelation(
          */
         val finalRowKey = getFinalKey(bound)
         val (start, length) = HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns)(index)
-        Some(DataTypeUtils.bytesToData(finalRowKey, start, length, dt, bytesUtils).asInstanceOf[dt.InternalType])
+        Some(fieldReadersMap.get(dt).getValueFromBytes(finalRowKey, start, length).asInstanceOf[dt.InternalType])
       }
     }
 
@@ -392,7 +416,9 @@ private[sql] case class HBaseRelation(
       val items: Seq[(Any, AtomicType)] = cpr.prefix
       val head: Seq[(HBaseRawType, AtomicType)] = items.map {
         case (itemValue, itemType) =>
-          (DataTypeUtils.dataToBytes(itemValue, itemType, bytesUtils), itemType)
+//          (DataTypeUtils.dataToBytes(itemValue, itemType, bytesUtils), itemType)
+          val reader = fieldReadersMap.get(itemType)
+          (reader.getRawBytes(itemValue.asInstanceOf[reader.InternalType]), itemType)
       }
 
       val headExpression: Seq[Expression] = items.zipWithIndex.map { case (item, index) =>
@@ -458,8 +484,11 @@ private[sql] case class HBaseRelation(
       val filter = {
         if (cpr.lastRange.isPoint) {
           // the last range is a point
-          val tail: (HBaseRawType, AtomicType) =
-            (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
+          val tail: (HBaseRawType, AtomicType) = {
+            val reader = fieldReadersMap.get(keyType)
+//            (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
+            (reader.getRawBytes(startKey.get.asInstanceOf[reader.InternalType]), keyType)
+          }
           val rowKeys = head :+ tail
           val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
           if (cpr.prefix.size == keyColumns.size - 1) {
@@ -472,8 +501,11 @@ private[sql] case class HBaseRelation(
         } else {
           // the last range is not a point
           val startFilter: RowFilter = if (startKey.isDefined) {
-            val tail: (HBaseRawType, AtomicType) =
-              (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
+            val tail: (HBaseRawType, AtomicType) = {
+              val reader = fieldReadersMap.get(keyType)
+//              (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
+              (reader.getRawBytes(startKey.get.asInstanceOf[reader.InternalType]), keyType)
+            }
             val rowKeys = head :+ tail
             val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
             if (cpr.prefix.size == keyColumns.size - 1) {
@@ -496,8 +528,11 @@ private[sql] case class HBaseRelation(
             null
           }
           val endFilter: RowFilter = if (endKey.isDefined) {
-            val tail: (HBaseRawType, AtomicType) =
-              (DataTypeUtils.dataToBytes(endKey.get, keyType, bytesUtils), keyType)
+            val tail: (HBaseRawType, AtomicType) = {
+              val reader = fieldReadersMap.get(keyType)
+//              (DataTypeUtils.dataToBytes(endKey.get, keyType, bytesUtils), keyType)
+              (reader.getRawBytes(endKey.get.asInstanceOf[reader.InternalType]), keyType)
+            }
             val rowKeys = head :+ tail
             val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
             if (cpr.prefix.size == keyColumns.size - 1) {
@@ -638,7 +673,7 @@ private[sql] case class HBaseRelation(
       val filter = new SingleColumnValueFilter(column.familyRaw,
         column.qualifierRaw,
         compareOp,
-        DataTypeUtils.getBinaryComparator(bytesUtils.create(right.dataType), right))
+        DataTypeUtils.getBinaryComparator(fieldReadersMap.get(right.dataType), right))
       filter.setFilterIfMissing(true)
       Some(new FilterList(filter))
     } else {
@@ -687,7 +722,7 @@ private[sql] case class HBaseRelation(
               val filter = new SingleColumnValueFilter(column.get.familyRaw,
                 column.get.qualifierRaw,
                 CompareFilter.CompareOp.EQUAL,
-                DataTypeUtils.getBinaryComparator(bytesUtils.create(dataType),
+                DataTypeUtils.getBinaryComparator(fieldReadersMap.get(dataType),
                   Literal.create(item, dataType)))
               filterList.addFilter(filter)
             }
@@ -703,7 +738,7 @@ private[sql] case class HBaseRelation(
               val filter = new SingleColumnValueFilter(column.get.familyRaw,
                 column.get.qualifierRaw,
                 CompareFilter.CompareOp.EQUAL,
-                DataTypeUtils.getBinaryComparator(bytesUtils.create(dataType),
+                DataTypeUtils.getBinaryComparator(fieldReadersMap.get(dataType),
                   item.asInstanceOf[Literal]))
               filterList.addFilter(filter)
             }
@@ -747,8 +782,8 @@ private[sql] case class HBaseRelation(
   def sqlContext = context
 
   def schema: StructType = StructType(allColumns.map {
-    case KeyColumn(name, dt, _) => StructField(name, dt, nullable = false)
-    case NonKeyColumn(name, dt, _, _) => StructField(name, dt, nullable = true)
+    case KeyColumn(name, dt, _, _) => StructField(name, dt, nullable = false)
+    case NonKeyColumn(name, dt, _, _, _) => StructField(name, dt, nullable = true)
   })
 
   override def insert(data: DataFrame, overwrite: Boolean) = {
@@ -780,8 +815,7 @@ private[sql] case class HBaseRelation(
       val internalRow = InternalRow.fromSeq(seq)
       val rawKeyCol = keyColumns.map(
         kc => {
-          val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
-            internalRow, kc.ordinal, kc.dataType, bytesUtils)
+          val rowColumn = kc.fieldReader.getRowColumnInHBaseRawType(internalRow, kc.ordinal)
           if (rowColumn.isEmpty) {
             isSkip = true
           }
@@ -801,8 +835,7 @@ private[sql] case class HBaseRelation(
         val key = HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
         val put = new Put(key)
         nonKeyColumns.foreach { nkc =>
-          val rowVal = DataTypeUtils.getRowColumnInHBaseRawType(
-            internalRow, nkc.ordinal, nkc.dataType, bytesUtils)
+          val rowVal = nkc.fieldReader.getRowColumnInHBaseRawType(internalRow, nkc.ordinal)
           colIndexInBatch += 1
           put.add(nkc.familyRaw, nkc.qualifierRaw, rowVal)
         }
@@ -843,8 +876,8 @@ private[sql] case class HBaseRelation(
       val internalRow = InternalRow.fromSeq(seq)
       val rawKeyCol = keyColumns.map(
         kc => {
-          val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
-            internalRow, kc.ordinal, kc.dataType, bytesUtils)
+          val rowColumn = kc.fieldReader.getRowColumnInHBaseRawType(
+            internalRow, kc.ordinal)
           (rowColumn, kc.dataType)
         }
       )
@@ -1034,35 +1067,40 @@ private[sql] case class HBaseRelation(
     // TODO: add columns to the Get
   }
 
-  /**
-   *
-   * @param kv the cell value to work with
-   * @param projection the pair of projection and its index
-   * @param row the row to set values on
-   */
-  private def setColumn(kv: Cell, projection: (Attribute, Int), row: MutableRow,
-                        bytesUtils: BytesUtils): Unit = {
-    if (kv == null || kv.getValueLength == 0) {
-      row.setNullAt(projection._2)
-    } else {
-      val dt = projection._1.dataType
-      if (dt.isInstanceOf[AtomicType]) {
-        DataTypeUtils.setRowColumnFromHBaseRawType(
-          row, projection._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength, dt, bytesUtils)
-      } else {
-        // for complex types, deserialiation is involved and we aren't sure about buffer safety
-        val colValue = CellUtil.cloneValue(kv)
-        DataTypeUtils.setRowColumnFromHBaseRawType(
-          row, projection._2, colValue, 0, colValue.length, dt, bytesUtils)
-      }
-    }
-  }
+//  /**
+//   *
+//   * @param kv the cell value to work with
+//   * @param projection the pair of projection and its index
+//   * @param row the row to set values on
+//   */
+//  private def setColumn(kv: Cell, projection: (Attribute, Int), row: MutableRow,
+//                        bytesUtils: BytesUtils): Unit = {
+//    if (kv == null || kv.getValueLength == 0) {
+//      row.setNullAt(projection._2)
+//    } else {
+//      val dt = projection._1.dataType
+//      if (dt.isInstanceOf[AtomicType]) {
+//        DataTypeUtils.setRowColumnFromHBaseRawType(
+//          row, projection._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength, dt, bytesUtils)
+//      } else {
+//        // for complex types, deserialiation is involved and we aren't sure about buffer safety
+//        val colValue = CellUtil.cloneValue(kv)
+//        DataTypeUtils.setRowColumnFromHBaseRawType(
+//          row, projection._2, colValue, 0, colValue.length, dt, bytesUtils)
+//      }
+//    }
+//  }
 
   def buildRowAfterCoprocessor(projections: Seq[(Attribute, Int)],
                                result: Result,
                                row: MutableRow): InternalRow = {
-    for (i <- projections.indices) {
-      setColumn(result.rawCells()(i), projections(i), row, bytesUtils)
+    projections.foreach {p =>
+      val kv = result.rawCells()(p._2)
+      if (kv == null || kv.getValueLength == 0) {
+        row.setNullAt(p._2)
+      } else {
+        fieldReadersMap.get(p._1.dataType).setDataInRow(row,p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
+      }
     }
     row
   }
@@ -1112,11 +1150,17 @@ private[sql] case class HBaseRelation(
         columnMap.get(p._1.name).get match {
           case column: NonKeyColumn =>
             val kv = getColumnLatestCell(column.familyRaw, column.qualifierRaw)
-            setColumn(kv, p, row, bytesUtils)
-          case keyIndex: Int =>
-            val (start, length) = rowKeys(keyIndex)
-            DataTypeUtils.setRowColumnFromHBaseRawType(
-              row, p._2, result.head.getRowArray, start, length, keyColumns(keyIndex).dataType, bytesUtils)
+//            setColumn(kv, p, row, bytesUtils)
+            if (kv == null || kv.getValueLength == 0) {
+              row.setNullAt(p._2)
+            } else {
+              column.fieldReader.setDataInRow(row,p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
+            }
+          case key: KeyColumn =>
+            val (start, length) = rowKeys(key.order)
+//            DataTypeUtils.setRowColumnFromHBaseRawType(
+//              row, p._2, result.head.getRowArray, start, length, keyColumns(keyIndex).dataType, bytesUtils)
+            key.fieldReader.setDataInRow(row,p._2, result.head.getRowArray, start, length)
         }
     }
     row
@@ -1131,11 +1175,17 @@ private[sql] case class HBaseRelation(
         columnMap.get(p._1.name).get match {
           case column: NonKeyColumn =>
             val kv: Cell = result.getColumnLatestCell(column.familyRaw, column.qualifierRaw)
-            setColumn(kv, p, row, bytesUtils)
-          case keyIndex: Int =>
-            val (start, length) = rowKeys(keyIndex)
-            DataTypeUtils.setRowColumnFromHBaseRawType(
-              row, p._2, result.getRow, start, length, keyColumns(keyIndex).dataType, bytesUtils)
+//            setColumn(kv, p, row, bytesUtils)
+            if (kv == null || kv.getValueLength == 0) {
+              row.setNullAt(p._2)
+            } else {
+              column.fieldReader.setDataInRow(row,p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
+            }
+          case key: KeyColumn =>
+            val (start, length) = rowKeys(key.order)
+            key.fieldReader.setDataInRow(row,p._2, result.getRow, start, length)
+//            DataTypeUtils.setRowColumnFromHBaseRawType(
+//              row, p._2, result.getRow, start, length, keyColumns(key.order).dataType, bytesUtils)
         }
     }
     row
@@ -1206,6 +1256,7 @@ private[sql] case class HBaseRelation(
       keyColumns.drop(startKeyIndex).map(k => {
         k.dataType match {
           case StringType => 1
+          case dt:DecimalType => 4
           case _ => k.dataType.asInstanceOf[AtomicType].defaultSize
         }
       }
@@ -1226,8 +1277,8 @@ private[sql] case class HBaseRelation(
       val finalRowKey = getFinalKey(rawKey)
 
       HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns).
-        zipWithIndex.map(pi => DataTypeUtils.bytesToData(finalRowKey,
-        pi._1._1, pi._1._2, keyColumns(pi._2).dataType, bytesUtils))
+        zipWithIndex.map(pi => keyColumns(pi._2).fieldReader.getValueFromBytes(finalRowKey,
+        pi._1._1, pi._1._2))
     }
   }
 }

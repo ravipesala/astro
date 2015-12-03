@@ -53,24 +53,10 @@ object Util {
     conf.readFields(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(arr))))
     conf
   }
-
-  def getValueFromString(value: String, dt: DataType): Any = {
-    dt match {
-      case StringType => UTF8String.fromString(value)
-      case ByteType => value.toByte
-      case ShortType => value.toShort
-      case IntegerType => value.toInt
-      case LongType => value.toLong
-      case FloatType => value.toFloat
-      case DoubleType => value.toDouble
-      case BooleanType => value.toBoolean
-      case _ => throw new IllegalArgumentException(s"Unrecognized data type: $dt")
-    }
-  }
-
-  def getBytesUtils(encodingFormat: String) = encodingFormat match {
-    case "stringformat" => StringBytesUtils
-    case "hbasebinaryformat" => HbaseBinaryBytesUtils
-    case _ => BinaryBytesUtils
-  }
+//
+//  def getBytesUtils(encodingFormat: String) = encodingFormat match {
+//    case "stringformat" => StringBytesUtils
+//    case "hbasebinaryformat" => HbaseBinaryBytesUtils
+//    case _ => BinaryBytesUtils
+//  }
 }

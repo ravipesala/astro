@@ -48,7 +48,7 @@ class HBasePreLoadedDataQuerySuite extends TestBaseWithNonSplitData {
          |  hbaseTableName "$TestHBaseTablePreLoadName",
          |  keyCols "doublecol",
          |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol, strcol=cf1.hstrcol, intcol=cf2.hintcol",
-         |  encodingFormat "hbasebinaryformat"
+         |  encodingFormat "hbaseformat"
          |)"""
         .stripMargin
     createTable(TestTablePreLoadName, TestHBaseTablePreLoadName, testTableCreationSQL)

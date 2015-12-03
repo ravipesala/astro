@@ -24,18 +24,14 @@ import org.apache.hadoop.hbase.regionserver._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.log4j.Logger
 import org.apache.spark._
-import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.LiveListenerBus
-import org.apache.spark.shuffle.ShuffleMemoryManager
+import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GeneratePredicate
-import org.apache.spark.sql.hbase.util.{BytesUtils, DataTypeUtils}
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Row, SQLContext}
-import org.apache.spark.unsafe.memory.{MemoryAllocator, ExecutorMemoryManager, TaskMemoryManager}
-import org.apache.spark.util.collection.unsafe.sort.UnsafeExternalSorter
+import org.apache.spark.unsafe.memory.TaskMemoryManager
 
 /**
  * HBaseCoprocessorSQLReaderRDD:
@@ -166,8 +162,8 @@ class SparkSqlRegionObserver extends BaseRegionObserver {
       val serializedRDD = scan.getAttribute(CoprocessorConstants.COKEY)
       val subPlanRDD: RDD[InternalRow] = HBaseSerializer.deserialize(serializedRDD).asInstanceOf[RDD[InternalRow]]
 
-      val serializedFormat = scan.getAttribute(CoprocessorConstants.COENCFORMAT)
-      val byteUtils = HBaseSerializer.deserialize(serializedFormat).asInstanceOf[BytesUtils]
+      val serializedFormat = scan.getAttribute(CoprocessorConstants.COFIELDMAP)
+      val fileReaderMap = HBaseSerializer.deserialize(serializedFormat).asInstanceOf[FieldDataCache]
 
       val taskParaInfo = scan.getAttribute(CoprocessorConstants.COTASK)
       val (stageId, partitionId, taskAttemptId, attemptNumber) =
@@ -214,7 +210,11 @@ class SparkSqlRegionObserver extends BaseRegionObserver {
               val dataType = outputDataType(i)
               val data = nextRow.get(i, dataType)
               val dataOfBytes: HBaseRawType = {
-                if (data == null) null else DataTypeUtils.dataToBytes(data, dataType, byteUtils)
+                if (data == null) null else {
+                  val reader: FieldData = fileReaderMap.get(dataType)
+                  reader.getRawBytes(data.asInstanceOf[reader.InternalType])
+//                  DataTypeUtils.dataToBytes(data, dataType, byteUtils)
+                }
               }
               results.add(new KeyValue(EmptyArray, EmptyArray, EmptyArray, dataOfBytes))
             }

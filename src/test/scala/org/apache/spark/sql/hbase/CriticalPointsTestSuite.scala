@@ -18,7 +18,7 @@ package org.apache.spark.sql.hbase
 
 import org.apache.spark._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.hbase.util.{BinaryBytesUtils, HBaseKVHelper}
+import org.apache.spark.sql.hbase.util.HBaseKVHelper
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
@@ -42,10 +42,14 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Generate CP Ranges 0") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", IntegerType, 0)
-    allColumns = allColumns :+ NonKeyColumn("column2", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+
+      KeyColumn("column1", IntegerType, 0,
+        FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      NonKeyColumn("column2", BooleanType, family1, "qualifier1",
+        FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
     val relation = HBaseRelation(tableName, namespace,
-      hbaseTableName, allColumns, Some(true))(TestHbase)
+      hbaseTableName, allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column1").get
     val llr = Literal.create(1023, IntegerType)
@@ -83,11 +87,15 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Generate CP Ranges 1") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", LongType, 0)
-    allColumns = allColumns :+ NonKeyColumn("column2", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+
+      KeyColumn("column1", LongType, 0,
+        FieldFactory.createFieldData(LongType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      NonKeyColumn("column2", BooleanType, family1, "qualifier1",
+        FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column1").get
     val llr = Literal.create(1023L, LongType)
@@ -120,11 +128,13 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Generate CP Ranges 2") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", StringType, 0)
-    allColumns = allColumns :+ NonKeyColumn("column2", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+ KeyColumn("column1", StringType, 0,
+      FieldFactory.createFieldData(StringType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column2", BooleanType, family1, "qualifier1",
+      FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column1").get
     val llr = Literal.create("aaa", StringType)
@@ -152,14 +162,23 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Generate CP Ranges for Multi-Dimension 0") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", StringType, 0)
-    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1)
-    allColumns = allColumns :+ KeyColumn("column3", ShortType, 2)
-    allColumns = allColumns :+ NonKeyColumn("column4", FloatType, family2, "qualifier2")
-    allColumns = allColumns :+ NonKeyColumn("column5", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+
+      KeyColumn("column1", StringType, 0, FieldFactory.createFieldData(StringType,
+        FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      KeyColumn("column2", IntegerType, 1, FieldFactory.createFieldData(IntegerType,
+        FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      KeyColumn("column3", ShortType, 2, FieldFactory.createFieldData(ShortType,
+        FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      NonKeyColumn("column4", FloatType, family2, "qualifier2",
+        FieldFactory.createFieldData(FloatType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column5", BooleanType, family1, "qualifier1",
+      FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column3").get
     val llr = Literal.create(8.toShort, ShortType)
@@ -215,13 +234,21 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Generate CP Ranges for Multi-Dimension 1") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", StringType, 0)
-    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1)
-    allColumns = allColumns :+ NonKeyColumn("column4", FloatType, family2, "qualifier2")
-    allColumns = allColumns :+ NonKeyColumn("column5", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+
+      KeyColumn("column1", StringType, 0, FieldFactory.createFieldData(StringType,
+        FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      KeyColumn("column2", IntegerType, 1, FieldFactory.createFieldData(IntegerType,
+        FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      NonKeyColumn("column4", FloatType, family2, "qualifier2",
+        FieldFactory.createFieldData(FloatType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      NonKeyColumn("column5", BooleanType, family1, "qualifier1",
+        FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column2").get
     val llr = Literal.create(8, IntegerType)
@@ -281,13 +308,19 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Get partitions 0") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", IntegerType, 0)
-    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1)
-    allColumns = allColumns :+ NonKeyColumn("column3", FloatType, family2, "qualifier2")
-    allColumns = allColumns :+ NonKeyColumn("column4", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+
+      KeyColumn("column1", IntegerType, 0,
+        FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      KeyColumn("column2", IntegerType, 1,
+        FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column3", FloatType, family2, "qualifier2",
+      FieldFactory.createFieldData(FloatType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column4", BooleanType, family1, "qualifier1",
+      FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column2").get
     val llr = Literal.create(8, IntegerType)
@@ -321,29 +354,31 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     assert(expandedCPRs.size == 4)
 
+    val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
+
     val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(0), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(7), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(0.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(7.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(1), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(3), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(4), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(3.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(4.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(3), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(6), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(3.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(6.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val p1 = new HBasePartition(0, 0, None, Some(rowkey0), relation = relation)
@@ -362,13 +397,17 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Get partitions 1") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", IntegerType, 0)
-    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1)
-    allColumns = allColumns :+ NonKeyColumn("column3", FloatType, family2, "qualifier2")
-    allColumns = allColumns :+ NonKeyColumn("column4", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+ KeyColumn("column1", IntegerType, 0,
+      FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1,
+      FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column3", FloatType, family2, "qualifier2",
+      FieldFactory.createFieldData(FloatType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column4", BooleanType, family1, "qualifier1",
+      FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column2").get
     val llr = Literal.create(8, IntegerType)
@@ -402,29 +441,31 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     assert(expandedCPRs.size == 4)
 
+    val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
+
     val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(1), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(1), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(8), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(32), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(16), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(32.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(16.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(64), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(128), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(64.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(128.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(1024), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(256), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(1024.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(256.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val p1 = new HBasePartition(0, 0, None, Some(rowkey0), relation = relation)
@@ -454,13 +495,19 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Get partitions 2") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", IntegerType, 0)
-    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1)
-    allColumns = allColumns :+ NonKeyColumn("column3", FloatType, family2, "qualifier2")
-    allColumns = allColumns :+ NonKeyColumn("column4", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+
+      KeyColumn("column1", IntegerType, 0,
+        FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+
+      KeyColumn("column2", IntegerType, 1,
+        FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column3", FloatType, family2, "qualifier2",
+      FieldFactory.createFieldData(FloatType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column4", BooleanType, family1, "qualifier1",
+      FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column2").get
     val llr = Literal.create(8, IntegerType)
@@ -494,29 +541,31 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     assert(expandedCPRs.size == 2)
 
+    val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
+
     val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(1), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(1), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(8), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(32), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(16), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(32.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(16.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(64), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(128), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(64.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(128.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(1024), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(256), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(1024.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(256.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val p1 = new HBasePartition(0, 0, None, Some(rowkey0), relation = relation)
@@ -544,14 +593,19 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
   test("Get partitions 3") {
     var allColumns = List[AbstractColumn]()
-    allColumns = allColumns :+ KeyColumn("column1", IntegerType, 0)
-    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1)
-    allColumns = allColumns :+ KeyColumn("column3", IntegerType, 2)
-    allColumns = allColumns :+ NonKeyColumn("column4", FloatType, family2, "qualifier2")
-    allColumns = allColumns :+ NonKeyColumn("column5", BooleanType, family1, "qualifier1")
+    allColumns = allColumns :+ KeyColumn("column1", IntegerType, 0,
+      FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ KeyColumn("column2", IntegerType, 1,
+      FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ KeyColumn("column3", IntegerType, 2,
+      FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column4", FloatType, family2, "qualifier2",
+      FieldFactory.createFieldData(FloatType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
+    allColumns = allColumns :+ NonKeyColumn("column5", BooleanType, family1, "qualifier1",
+      FieldFactory.createFieldData(BooleanType, FieldFactory.BINARY_FORMAT, Array[Byte]()))
 
     val relation = HBaseRelation(tableName, namespace, hbaseTableName,
-      allColumns, Some(true))(TestHbase)
+      allColumns, Some(true), Array[Byte]())(TestHbase)
 
     val lll = relation.output.find(_.name == "column3").get
     val llr = Literal.create(32, IntegerType)
@@ -585,34 +639,36 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     assert(expandedCPRs.size == 1)
 
+    val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
+
     val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(8), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(16), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(16.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(8), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(32), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(32.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(8), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(64), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(64.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(8), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(128), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(128.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
-      Seq((BinaryBytesUtils.create(IntegerType).toBytes(2), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(8), IntegerType)
-        , (BinaryBytesUtils.create(IntegerType).toBytes(256), IntegerType))
+      Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
+        , (fieldDataInteger.getRawBytes(256.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
     val p1 = new HBasePartition(0, 0, None, Some(rowkey0), relation = relation)

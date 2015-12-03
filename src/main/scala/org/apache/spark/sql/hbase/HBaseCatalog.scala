@@ -47,6 +47,7 @@ sealed abstract class AbstractColumn extends Serializable {
   val sqlName: String
   val dataType: DataType
   var ordinal: Int = -1
+  val fieldReader: FieldData
 
   def isKeyColumn: Boolean
 
@@ -55,12 +56,12 @@ sealed abstract class AbstractColumn extends Serializable {
   }
 }
 
-case class KeyColumn(sqlName: String, dataType: DataType, order: Int)
+case class KeyColumn(sqlName: String, dataType: DataType, order: Int, fieldReader: FieldData)
   extends AbstractColumn {
   override def isKeyColumn: Boolean = true
 }
 
-case class NonKeyColumn(sqlName: String, dataType: DataType, family: String, qualifier: String)
+case class NonKeyColumn(sqlName: String, dataType: DataType, family: String, qualifier: String, fieldReader: FieldData)
   extends AbstractColumn {
   @transient lazy val familyRaw = Bytes.toBytes(family)
   @transient lazy val qualifierRaw = Bytes.toBytes(qualifier)
@@ -171,7 +172,8 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
 
   def createTable(tableName: String, hbaseNamespace: String, hbaseTableName: String,
                   allColumns: Seq[AbstractColumn], splitKeys: Array[Array[Byte]],
-                  encodingFormat: String = "binaryformat"): HBaseRelation = {
+                  separators: Array[Byte],
+                  encodingFormat: String, hiveStorage: Boolean = false): HBaseRelation = {
 
     // create a new hbase table for the user if not exist
     val nonKeyColumns = allColumns.filter(_.isInstanceOf[NonKeyColumn])
@@ -191,7 +193,7 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
     }
 
     val hbaseRelation = HBaseRelation(tableName, hbaseNamespace, hbaseTableName,
-      allColumns, deploySuccessfully, encodingFormat)(hbaseContext)
+      allColumns, deploySuccessfully, separators, encodingFormat, hiveStorage)(hbaseContext)
     hbaseRelation.setConfig(configuration)
     hbaseRelation.fetchPartitions()
     hbaseRelation
@@ -205,7 +207,7 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
       val allColumns = relation.allColumns.filter(_.sqlName != columnName)
       val hbaseRelation = HBaseRelation(relation.tableName,
         relation.hbaseNamespace, relation.hbaseTableName,
-        allColumns, deploySuccessfully)(hbaseContext)
+        allColumns, deploySuccessfully, FieldFactory.collectSeperators(Map[String, String]()))(hbaseContext)
       hbaseRelation.setConfig(configuration)
 
       writeObjectToTable(hbaseRelation, metadataTable)
@@ -223,7 +225,7 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
       val allColumns = relation.allColumns :+ column
       val hbaseRelation = HBaseRelation(relation.tableName,
         relation.hbaseNamespace, relation.hbaseTableName,
-        allColumns, deploySuccessfully)(hbaseContext)
+        allColumns, deploySuccessfully, FieldFactory.collectSeperators(Map[String, String]()))(hbaseContext)
       hbaseRelation.setConfig(configuration)
 
       writeObjectToTable(hbaseRelation, metadataTable)
@@ -426,6 +428,24 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
       DoubleType
     } else if (dataType.equalsIgnoreCase(BooleanType.typeName)) {
       BooleanType
+    } else if (dataType.equalsIgnoreCase(DateType.typeName)) {
+      DateType
+    } else if (dataType.equalsIgnoreCase(TimestampType.typeName)) {
+      TimestampType
+    } else if (dataType.startsWith(DecimalType.simpleString)) {
+      val dcls = dataType.stripPrefix(DecimalType.simpleString+"(").dropRight(1).split(",")
+      DecimalType(dcls(0).toInt, dcls(1).toInt)
+    } else if (dataType.startsWith("array<")) {
+      ArrayType(getDataType(dataType.stripPrefix("array<").dropRight(1)))
+    } else if (dataType.startsWith("struct<")) {
+      val structFields = dataType.stripPrefix("struct<").dropRight(1).split(",").map{f=>
+        val strings = f.split(":")
+        StructField(strings(0), getDataType(strings(1)))
+      }
+      StructType(structFields)
+    } else if (dataType.startsWith("map<")) {
+      val mapString = dataType.stripPrefix("map<").dropRight(1).split(",")
+      MapType(getDataType(mapString(0)),getDataType(mapString(1)))
     } else {
       throw new IllegalArgumentException(s"Unrecognized data type: $dataType")
     }

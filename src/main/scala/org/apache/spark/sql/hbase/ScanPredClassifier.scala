@@ -106,7 +106,7 @@ class ScanPredClassifier(relation: HBaseRelation) {
              * if ByteType and 1, 2, 3 is Integer.
              */
             DataTypeUtils.getBinaryComparator(
-              relation.bytesUtils.create(dataType), Literal.create(item, dataType))
+              relation.fieldReadersMap.get(dataType), Literal.create(item, dataType))
           } catch {
             case e: Exception => errorOccurred = true
           }

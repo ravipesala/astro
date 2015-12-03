@@ -27,8 +27,8 @@ import org.apache.hadoop.hbase.{Cell, CellUtil, KeyValue}
 import org.apache.hadoop.io.Writable
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.hbase.catalyst.expressions.PartialPredicateOperations._
-import org.apache.spark.sql.hbase.util.{BinaryBytesUtils, DataTypeUtils, HBaseKVHelper}
-import org.apache.spark.sql.types.{AtomicType, DataType, StringType}
+import org.apache.spark.sql.hbase.util.HBaseKVHelper
+import org.apache.spark.sql.types.{AtomicType, DataType, DecimalType, StringType}
 
 /**
  * The custom filter.  It will skip the scanner to the proper next position based on predicate.
@@ -443,16 +443,17 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
     val dt = node.dt
     val value = node.currentValue
     var canAddOne: Boolean = true
-    if (dt == StringType) {
-      val newString = relation.bytesUtils.addOneString(relation.bytesUtils.create(dt).toBytes(value))
-      val newValue = DataTypeUtils.bytesToData(newString, 0, newString.length, dt, relation.bytesUtils)
+    val fieldData = relation.fieldReadersMap.get(dt)
+    if (dt == StringType || dt == DecimalType) {
+      val newString = HBaseKVHelper.addOneString(fieldData.getRawBytes(value.asInstanceOf[fieldData.InternalType]))
+      val newValue = fieldData.getValueFromBytes(newString, 0, newString.length)
       node.currentValue = newValue
     } else {
-      val newArray = relation.bytesUtils.addOne(relation.bytesUtils.create(dt).toBytes(value))
+      val newArray = HBaseKVHelper.addOne(fieldData.getRawBytes(value.asInstanceOf[fieldData.InternalType]))
       if (newArray == null) {
         canAddOne = false
       } else {
-        val newValue = DataTypeUtils.bytesToData(newArray, 0, newArray.length, dt, relation.bytesUtils)
+        val newValue = fieldData.getValueFromBytes(newArray, 0, newArray.length)
         node.currentValue = newValue
       }
     }
@@ -487,7 +488,8 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
       node.children(node.currentChildIndex).currentValue != null) {
       val levelNode: Node = node.children(node.currentChildIndex)
       val dt = levelNode.dt
-      val value = relation.bytesUtils.create(dt).toBytes(levelNode.currentValue)
+      val fieldData: FieldData = relation.fieldReadersMap.get(dt)
+      val value = fieldData.getRawBytes(levelNode.currentValue.asInstanceOf[fieldData.InternalType])
       list = list :+(value, dt)
       if (levelNode.dimension < relation.dimSize - 1) {
         generateCPRs(levelNode)
@@ -581,8 +583,10 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
         val nkc = relation.nonKeyColumns.find(a =>
           Bytes.compareTo(a.familyRaw, family) == 0 &&
             Bytes.compareTo(a.qualifierRaw, qualifier) == 0).get
-        val value = DataTypeUtils.bytesToData(
-          data, 0, data.length, nkc.dataType, relation.bytesUtils)
+//        val value = DataTypeUtils.bytesToData(
+//          data, 0, data.length, nkc.dataType, relation.bytesUtils)
+        val value = relation.fieldReadersMap.get(nkc.dataType).getValueFromBytes(data, 0, data.length)
+
         cellMap += (nkc -> value)
       }
     }
@@ -594,10 +598,10 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
           if (value.isDefined) {
             workingRow.update(result._2, value.get)
           }
-        case keyColumn: Int =>
+        case keyColumn: KeyColumn =>
           val keyIndex =
-            predReferences.indexWhere(_.exprId == relation.partitionKeys(keyColumn).exprId)
-          workingRow.update(keyIndex, currentValues(keyColumn))
+            predReferences.indexWhere(_.exprId == relation.partitionKeys(keyColumn.order).exprId)
+          workingRow.update(keyIndex, currentValues(keyColumn.order))
       }
     }
 

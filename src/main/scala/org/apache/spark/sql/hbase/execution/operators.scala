@@ -48,12 +48,7 @@ case class UpdateTable(
       .relation.asInstanceOf[HBaseRelation]
 
     val typesValues = values.zip(columnsToUpdate.map(_.dataType)).map { v =>
-      val typeValue = DataTypeUtils.string2TypeData(v._1, v._2)
-      if (v._2 == StringType) {
-        UTF8String.fromString(v._1) // InternalRow needs UTF8String, so convert it.
-      } else {
-        typeValue
-      }
+      relation.fieldReadersMap.get(v._2).parseStringToData(v._1)
     }
     val input = child.output
     val mutableRow = new SpecificMutableRow(input.map(_.dataType))

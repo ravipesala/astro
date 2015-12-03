@@ -20,14 +20,14 @@ import org.apache.hadoop.hbase.client.{Get, Result, ResultScanner, Scan}
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GeneratePredicate
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.hbase.execution.HBaseSQLTableScan
-import org.apache.spark.sql.hbase.util.{BinaryBytesUtils, DataTypeUtils, HBaseKVHelper}
+import org.apache.spark.sql.hbase.util.HBaseKVHelper
 import org.apache.spark.sql.types.{AtomicType, DataType}
-import org.apache.spark.sql.{Row, SQLContext}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -36,7 +36,7 @@ object CoprocessorConstants {
   final val COINDEX: String = "parIdx"
   final val COTYPE: String = "dtType"
   final val COTASK: String = "tskCtx"
-  final val COENCFORMAT: String = "tskEncodingFormat"
+  final val COFIELDMAP: String = "tskEncodingFormat"
 }
 
 /**
@@ -121,15 +121,20 @@ class HBaseSQLReaderRDD(val relation: HBaseRelation,
   private def constructRowKey(cpr: MDCriticalPointRange[_], isStart: Boolean): HBaseRawType = {
     val prefix = cpr.prefix
     val head: Seq[(HBaseRawType, AtomicType)] = prefix.map {
-      case (itemValue, itemType) =>
-        (DataTypeUtils.dataToBytes(itemValue, itemType, relation.bytesUtils), itemType)
+      case (itemValue, itemType) => {
+        val reader = relation.fieldReadersMap.get(itemType)
+//        (DataTypeUtils.dataToBytes(itemValue, itemType, relation.bytesUtils), itemType)
+        (reader.getRawBytes(itemValue.asInstanceOf[reader.InternalType]), itemType)
+      }
     }
 
     val key = if (isStart) cpr.lastRange.start else cpr.lastRange.end
     val keyType = cpr.lastRange.dt
     val list = if (key.isDefined) {
       val tail: (HBaseRawType, AtomicType) = {
-        (DataTypeUtils.dataToBytes(key.get, keyType, relation.bytesUtils), keyType)
+        val reader = relation.fieldReadersMap.get(keyType)
+//        (DataTypeUtils.dataToBytes(key.get, keyType, relation.bytesUtils), keyType)
+        (reader.getRawBytes(key.get.asInstanceOf[reader.InternalType]), keyType)
       }
       head :+ tail
     } else {
@@ -241,7 +246,7 @@ class HBaseSQLReaderRDD(val relation: HBaseRelation,
     scan.setAttribute(CoprocessorConstants.COTYPE, HBaseSerializer.serialize(outputDataType))
     scan.setAttribute(CoprocessorConstants.COKEY, HBaseSerializer.serialize(newSubplanRDD))
     scan.setAttribute(CoprocessorConstants.COTASK, HBaseSerializer.serialize(taskContextPara))
-    scan.setAttribute(CoprocessorConstants.COENCFORMAT, HBaseSerializer.serialize(relation.bytesUtils))
+    scan.setAttribute(CoprocessorConstants.COFIELDMAP, HBaseSerializer.serialize(relation.fieldReadersMap))
   }
 
   // For critical-point-based predicate pushdown
@@ -338,7 +343,7 @@ class HBaseSQLReaderRDD(val relation: HBaseRelation,
         val end = if (endRowKey != null) {
           val finalKey: HBaseRawType = {
             if (endInclusive || endKey.isEmpty) {
-              relation.bytesUtils.addOne(endRowKey)
+              HBaseKVHelper.addOne(endRowKey)
             } else {
               endRowKey
             }

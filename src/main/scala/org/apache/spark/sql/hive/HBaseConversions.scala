@@ -71,35 +71,38 @@ case class HBaseConversions(sqlContext: SQLContext) extends Rule[LogicalPlan] {
   }
 
   def convertToHBaseRelation(mr: MetastoreRelation): LogicalRelation = {
-    val columnsMapping = mr.hiveQlTable.getSerdeParam("hbase.columns.mapping")
+    val columnsMapping = mr.hiveQlTable.getSerdeParam(HBaseSerDe.HBASE_COLUMNS_MAPPING)
+    val storageFormat = mr.hiveQlTable.getSerdeParam(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE)
     val hbaseTableName = mr.hiveQlTable.getProperty("hbase.table.name")
 
     val colMap = HBaseSerDe.parseColumnsMapping(columnsMapping)
     val colMapIter = colMap.iterator()
     var keyCounter = 0
     val allColumns = new ArrayBuffer[AbstractColumn]()
+    var extraParams = Map[String, String]()
+    extraParams += FieldFactory.COLLECTION_SEPERATOR -> mr.tableDesc.getProperties.getProperty("colelction.delim")
+    extraParams += FieldFactory.MAPKEY_SEPERATOR -> mr.tableDesc.getProperties.getProperty("mapkey.delim")
+    val separators = FieldFactory.collectSeperators(extraParams)
+    val encodingFormat = {
+      if(storageFormat != null && storageFormat.equals("binary"))
+        FieldFactory.HBASE_FORMAT
+      else
+        FieldFactory.STRING_FORMAT
+    }
     //Create Astro columns from Hive table columns
     mr.hiveQlTable.getAllCols.foreach { f =>
       colMapIter.hasNext
       val col = colMapIter.next()
       if (col.isHbaseRowKey) {
-        //If key is struct type, split them into individual columns in Astro.
-        if (f.getType.startsWith("struct<")) {
-          val fields = f.getType.stripPrefix("struct<").dropRight(1).split(",").map(_.trim)
-          fields.foreach { fd =>
-            val field = fd.split(":").map(_.trim)
-            allColumns += KeyColumn(
-              field(0),
-              catalog.getDataType(field(1)),
-              keyCounter
-            )
-            keyCounter = keyCounter + 1
-          }
+        //Currently not supported the complex key types in Astro
+        if (f.getType.startsWith("struct<") || f.getType.startsWith("array<") || f.getType.startsWith("map<")) {
+          throw new Exception(s"Key column type should not be complex data type.")
         } else {
           allColumns += KeyColumn(
             f.getName,
             catalog.getDataType(f.getType),
-            keyCounter
+            keyCounter,
+            FieldFactory.createFieldData(catalog.getDataType(f.getType), encodingFormat, separators, 0, true)
           )
           keyCounter = keyCounter + 1
         }
@@ -108,12 +111,15 @@ case class HBaseConversions(sqlContext: SQLContext) extends Rule[LogicalPlan] {
           f.getName,
           catalog.getDataType(f.getType),
           col.getFamilyName,
-          col.getQualifierName
+          col.getQualifierName,
+          FieldFactory.createFieldData(catalog.getDataType(f.getType), encodingFormat, separators, 0, true)
         )
       }
     }
     //Create HbaseRelation with parsed columns from Hive table.
-    LogicalRelation(catalog.createTable(mr.hiveQlTable.getTableName, "", hbaseTableName, allColumns, null, "hbasebinaryformat"))
+    LogicalRelation(catalog.createTable(mr.hiveQlTable.getTableName, "",
+                    hbaseTableName,
+                    allColumns, null, separators, encodingFormat, true))
   }
 
 }

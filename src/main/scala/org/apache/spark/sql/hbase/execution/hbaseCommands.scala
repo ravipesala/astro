@@ -216,7 +216,7 @@ case class InsertValueIntoTableCommand(tableName: String, valueSeq: Seq[String])
     val bytes = new Array[Any](relation.output.length)
     for (i <- relation.output.indices) {
       if (i < valueSeq.length) {
-        bytes(i) = DataTypeUtils.string2TypeData(valueSeq(i), relation.schema(i).dataType)
+        bytes(i) = relation.fieldReadersMap.get(relation.schema(i).dataType).parseStringToData(valueSeq(i))
       } else {
         bytes(i) = null
       }
@@ -479,7 +479,7 @@ case class BulkLoadIntoTableCommand(
     val relation = baseRelation
 
     rdd.mapPartitions { iter =>
-      val lineBuffer = HBaseKVHelper.createLineBuffer(relation.output, relation.bytesUtils)
+      val lineBuffer = relation.output.map(x => relation.fieldReadersMap.get(x.dataType))
       val keyBytes = new Array[(HBaseRawType, DataType)](relation.keyColumns.size)
       var skipCount = 100
 

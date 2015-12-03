@@ -40,7 +40,9 @@ object HBaseKVHelper {
     var length = 0
     for (i <- 0 until rawKeyColumns.length) {
       length += rawKeyColumns(i)._1.length
-      if (rawKeyColumns(i)._2 == StringType && i < rawKeyColumns.length - 1) {
+      if ((rawKeyColumns(i)._2 == StringType ||
+        rawKeyColumns(i)._2 == DecimalType) &&
+        i < rawKeyColumns.length - 1) {
         length += 1
       }
     }
@@ -50,7 +52,9 @@ object HBaseKVHelper {
     for (rawKeyColumn <- rawKeyColumns) {
       Array.copy(rawKeyColumn._1, 0, result, index, rawKeyColumn._1.length)
       index += rawKeyColumn._1.length
-      if (rawKeyColumn._2 == StringType && kcIdx < rawKeyColumns.length - 1) {
+      if ((rawKeyColumn._2 == StringType ||
+        rawKeyColumn._2 == DecimalType) &&
+        kcIdx < rawKeyColumns.length - 1) {
         result(index) = delimiter
         index += 1
       }
@@ -82,7 +86,7 @@ object HBaseKVHelper {
         if (index >= limit) (-1, -1)
         else {
           val offset = index
-          if (c.dataType == StringType) {
+          if (c.dataType == StringType || c.dataType == DecimalType) {
             pos = rowKey.indexOf(delimiter, index)
             if (pos == -1 || pos > limit) {
               // this is at the last dimension
@@ -108,13 +112,13 @@ object HBaseKVHelper {
    */
   def string2KV(values: Seq[String],
                 relation: HBaseRelation,
-                lineBuffer: Array[ToBytesUtils],
+                lineBuffer: Seq[FieldData],
                 keyBytes: Array[(Array[Byte], DataType)],
                 valueBytes: Array[HBaseRawType]): Boolean = {
 
     relation.keyColumns.foreach(kc => {
       val ordinal = kc.ordinal
-      val bytes = string2Bytes(values(ordinal), lineBuffer(ordinal))
+      val bytes = lineBuffer(ordinal).parseStringToTypeDataBytes(values(ordinal))
       if (bytes.isEmpty) {
         return false
       }
@@ -123,53 +127,68 @@ object HBaseKVHelper {
     for (i <- relation.nonKeyColumns.indices) {
       val nkc = relation.nonKeyColumns(i)
       val bytes =  {
-        // we should not use the same buffer in bulk-loading otherwise it will lead to corrupted
-        lineBuffer(nkc.ordinal) = relation.bytesUtils.create(lineBuffer(nkc.ordinal).dataType)
-        string2Bytes(values(nkc.ordinal), lineBuffer(nkc.ordinal))
+        lineBuffer(nkc.ordinal).parseStringToTypeDataBytes(values(nkc.ordinal))
       }
       valueBytes(i) = bytes
     }
     true
   }
 
-  private def string2Bytes(v: String, bu: ToBytesUtils): Array[Byte] = {
-    v match {
-      case null => new Array[Byte](0)
-      case "" => new Array[Byte](0)
-      case _ =>
-        try {
-          bu.dataType match {
-            // todo: handle some complex types
-            case BooleanType => bu.toBytes(v.toBoolean)
-            case ByteType => bu.toBytes(v.toByte)
-            case DoubleType => bu.toBytes(v.toDouble)
-            case FloatType => bu.toBytes(v.toFloat)
-            case IntegerType => bu.toBytes(v.toInt)
-            case LongType => bu.toBytes(v.toLong)
-            case ShortType => bu.toBytes(v.toShort)
-            case StringType => bu.toBytes(v)
-            case DateType => bu.toBytes(DateTimeUtils.stringToDate(UTF8String.fromString(v)).get)
-            case TimestampType => bu.toBytes(DateTimeUtils.stringToTimestamp(UTF8String.fromString(v)).get)
-          }
-        } catch {
-          case e: NumberFormatException =>
-            // If there is an error of dataType cast, we set this field to be null. And we will
-            // print the error log outside this function.
-            new Array[Byte](0)
-        }
-    }
+
+  /**
+   * append one to the byte array
+   * @param input the byte array
+   * @return the modified byte array
+   */
+  def addOneString(input: HBaseRawType): HBaseRawType = {
+    val len = input.length
+    val result = new HBaseRawType(len + 1)
+    Array.copy(input, 0, result, 0, len)
+    result(len) = 0x01.asInstanceOf[Byte]
+    result
   }
 
   /**
-   * create a array of buffer that to be used for creating HBase Put object
-   * @param schema the schema of the line buffer
-   * @return
+   * add one to the unsigned byte array
+   * @param input the unsigned byte array
+   * @return null if the byte array is all 0xff, otherwise increase by 1
    */
-  private[hbase] def createLineBuffer(schema: Seq[Attribute], byteUtils: BytesUtils): Array[ToBytesUtils] = {
-    schema.map{x =>
-      byteUtils.create(x.dataType)
-    }.toArray
+  def addOne(input: HBaseRawType): HBaseRawType = {
+    val len = input.length
+    val result = new HBaseRawType(len)
+    Array.copy(input, 0, result, 0, len)
+    var setValue = false
+    for (index <- len - 1 to 0 by -1 if !setValue) {
+      val item: Byte = input(index)
+      if (item != 0xff.toByte) {
+        setValue = true
+        if ((item & 0x01.toByte) == 0.toByte) {
+          result(index) = (item ^ 0x01.toByte).toByte
+        } else if ((item & 0x02.toByte) == 0.toByte) {
+          result(index) = (item ^ 0x03.toByte).toByte
+        } else if ((item & 0x04.toByte) == 0.toByte) {
+          result(index) = (item ^ 0x07.toByte).toByte
+        } else if ((item & 0x08.toByte) == 0.toByte) {
+          result(index) = (item ^ 0x0f.toByte).toByte
+        } else if ((item & 0x10.toByte) == 0.toByte) {
+          result(index) = (item ^ 0x1f.toByte).toByte
+        } else if ((item & 0x20.toByte) == 0.toByte) {
+          result(index) = (item ^ 0x3f.toByte).toByte
+        } else if ((item & 0x40.toByte) == 0.toByte) {
+          result(index) = (item ^ 0x7f.toByte).toByte
+        } else {
+          result(index) = (item ^ 0xff.toByte).toByte
+        }
+        // after increment, set remaining bytes to zero
+        for (rest <- index + 1 until len) {
+          result(rest) = 0x00.toByte
+        }
+      }
+    }
+    if (!setValue) null
+    else result
   }
+
 
   /**
    * create a row key
@@ -177,10 +196,12 @@ object HBaseKVHelper {
    * @param dataTypeOfKeys sequence of data type
    * @return the row key
    */
-  def makeRowKey(row: InternalRow, dataTypeOfKeys: Seq[DataType], bytesUtils: BytesUtils): HBaseRawType = {
+  def makeRowKey(row: InternalRow, dataTypeOfKeys: Seq[DataType],
+                 encodingFormat: String, extraParams: Map[String,String]): HBaseRawType = {
     val rawKeyCol = dataTypeOfKeys.zipWithIndex.map {
       case (dataType, index) =>
-        (DataTypeUtils.getRowColumnInHBaseRawType(row, index, dataType, bytesUtils), dataType)
+        (FieldFactory.createFieldData(dataType, encodingFormat, FieldFactory.collectSeperators(extraParams)).
+          getRowColumnInHBaseRawType(row, index), dataType)
     }
 
     encodingRawKeyColumns(rawKeyCol)
