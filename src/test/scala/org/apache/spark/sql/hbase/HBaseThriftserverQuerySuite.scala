@@ -56,7 +56,7 @@ class HBaseThriftserverQuerySuite extends TestBaseWithNonSplitData {
         logError("JDBC Driver not loaded", e)
     }
     Thread.sleep(20000)
-    val con = DriverManager.getConnection("jdbc:hive2://localhost:10000/default", "jenkins", "");
+    val con = DriverManager.getConnection("jdbc:hive2://localhost:10000/default", System.getProperty("user.name"), "");
     stmt = con.createStatement();
 
     val testTableCreationHiveSQL =
