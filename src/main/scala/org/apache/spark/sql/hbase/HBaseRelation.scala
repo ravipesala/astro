@@ -77,12 +77,6 @@ class HBaseSource extends SchemaRelationProvider {
       }
 
     schema.fields.foreach { filed =>
-      if (!DataTypeUtils.supportedDataTypes.contains(filed.dataType)) {
-        throw new SparkException(s"Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
-      }
-    }
-
-    schema.fields.foreach { filed =>
       if (!DataTypeUtils.keySupportedDataTypes.contains(filed.dataType) && keyCols.contains(filed.name)) {
         throw new SparkException(s"Key Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
       }
