@@ -36,6 +36,11 @@ object DataTypeUtils extends Logging {
 
   val supportedDataTypes = (IntegerType :: StringType :: LongType
     :: ShortType :: BooleanType :: ByteType
+    :: DoubleType :: FloatType :: DateType
+    :: TimestampType :: DecimalType :: StructType :: ArrayType :: MapType :: Nil).toSet
+
+  val keySupportedDataTypes = (IntegerType :: StringType :: LongType
+    :: ShortType :: BooleanType :: ByteType
     :: DoubleType :: FloatType :: DateType :: TimestampType :: DecimalType :: Nil).toSet
 
   /**

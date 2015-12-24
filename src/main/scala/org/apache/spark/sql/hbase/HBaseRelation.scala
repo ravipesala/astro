@@ -21,24 +21,22 @@ import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.filter._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.{HBaseConfiguration, _}
-import org.apache.log4j.Logger
-import org.apache.spark.{Logging, TaskContext}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.{expressions, InternalRow}
-import org.apache.spark.sql.execution.datasources.LogicalRelation
-import org.apache.spark.sql.{Row, DataFrame, SQLContext}
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.{InternalRow, expressions}
+import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.hbase.catalyst.NotPusher
 import org.apache.spark.sql.hbase.catalyst.expressions.PartialPredicateOperations.partialPredicateReducer
 import org.apache.spark.sql.hbase.types.Range
 import org.apache.spark.sql.hbase.util._
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 import org.apache.spark.unsafe.types.UTF8String
+import org.apache.spark.{Logging, SparkException, TaskContext}
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 class HBaseSource extends SchemaRelationProvider {
@@ -51,7 +49,7 @@ class HBaseSource extends SchemaRelationProvider {
     val optSet = Set("hbasetablename", "keycols", "colsmapping")
     val keySet = parameters.keySet.map(_.toLowerCase)
     if (!(optSet.intersect(keySet).size == 3)) {
-      throw new scala.Exception("Options keys(hbaseTableName, keyCols, colsMapping) are obligatory")
+      throw new SparkException("Options keys(hbaseTableName, keyCols, colsMapping) are obligatory")
     }
 
     // As we cann't get tableName on CREATE clause, so we can not check whether if the tableName on
@@ -79,8 +77,14 @@ class HBaseSource extends SchemaRelationProvider {
       }
 
     schema.fields.foreach { filed =>
-      if (!DataTypeUtils.supportedDataTypes.contains(filed.dataType) && keyCols.contains(filed.name)) {
-        throw new Exception(s"Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
+      if (!DataTypeUtils.supportedDataTypes.contains(filed.dataType)) {
+        throw new SparkException(s"Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
+      }
+    }
+
+    schema.fields.foreach { filed =>
+      if (!DataTypeUtils.keySupportedDataTypes.contains(filed.dataType) && keyCols.contains(filed.name)) {
+        throw new SparkException(s"Key Cloumn name ${filed.name} has unsupported dataype ${filed.dataType}.")
       }
     }
 
@@ -88,23 +92,23 @@ class HBaseSource extends SchemaRelationProvider {
       colsMapping.map { colMapping =>
         val mapping = colMapping.split("=")
         if (mapping.length != 2) {
-          throw new scala.Exception(s"Syntax Error of column mapping($colMapping), " +
+          throw new SparkException(s"Syntax Error of column mapping($colMapping), " +
             "(sqlCol=colFamily.colQualifier, needs \"=\")")
         }
         if (!colsSeq.contains(mapping(0))) {
-          throw new scala.Exception(s"Syntax Error of column mapping($colMapping), " +
+          throw new SparkException(s"Syntax Error of column mapping($colMapping), " +
             s"${mapping(0)} is not a column")
         }
         val info = mapping(1).split("\\.")
         if (info.length != 2) {
-          throw new scala.Exception(s"Syntax Error of column mapping($colMapping), " +
+          throw new SparkException(s"Syntax Error of column mapping($colMapping), " +
             "(sqlCol=colFamily.colQualifier, needs \".\")")
         }
         mapping(0) ->(info(0), info(1))
       }.toMap
 
     val divideTableColsByKeyOrNonkey = schema.fields.partition {
-      case structField @ StructField(name, _, _, _) =>
+      case structField@StructField(name, _, _, _) =>
         keyCols.contains(name)
     }
 
@@ -112,7 +116,7 @@ class HBaseSource extends SchemaRelationProvider {
       structType.name -> structType.dataType
     }.toMap
 
-    val nonKeyColsWithDataType = divideTableColsByKeyOrNonkey._2.map{ structType =>
+    val nonKeyColsWithDataType = divideTableColsByKeyOrNonkey._2.map { structType =>
       val (family, qualifier) = infoMap.get(structType.name).get
       (structType.name, structType.dataType, family, qualifier)
     }
@@ -162,7 +166,7 @@ class HBaseSource extends SchemaRelationProvider {
         splitKeysInfo.split(groupDelimiter).map(_.trim).map { splitKeyStr: String =>
           val splitKeyArr = splitKeyStr.split(dataDelimiter).map(_.trim)
           if (splitKeyArr.length != dataTypes.length) {
-            throw new scala.Exception(s"There are ${dataTypes.length} keys, " +
+            throw new SparkException(s"There are ${dataTypes.length} keys, " +
               s"but have ${splitKeyArr.length} split key values")
           }
           val rowArr: Array[Any] = splitKeyArr.zipWithIndex.map {
@@ -189,15 +193,15 @@ class HBaseSource extends SchemaRelationProvider {
  */
 @SerialVersionUID(15298736227428789L)
 private[sql] case class HBaseRelation(
-                                         tableName: String,
-                                         hbaseNamespace: String,
-                                         hbaseTableName: String,
-                                         allColumns: Seq[AbstractColumn],
-                                         deploySuccessfully: Option[Boolean],
-                                         separators: Array[Byte],
-                                         encodingFormat: String = FieldFactory.BINARY_FORMAT,
-                                         hiveStorage: Boolean = false)
-                                       (@transient var context: SQLContext)
+                                       tableName: String,
+                                       hbaseNamespace: String,
+                                       hbaseTableName: String,
+                                       allColumns: Seq[AbstractColumn],
+                                       deploySuccessfully: Option[Boolean],
+                                       separators: Array[Byte],
+                                       encodingFormat: String = FieldFactory.BINARY_FORMAT,
+                                       hiveStorage: Boolean = false)
+                                     (@transient var context: SQLContext)
   extends BaseRelation with InsertableRelation with Serializable with Logging {
 
   @transient lazy val keyColumns = allColumns.filter(_.isInstanceOf[KeyColumn])
@@ -207,21 +211,21 @@ private[sql] case class HBaseRelation(
   // to sort cells per row, as needed in bulk loader
   @transient lazy val nonKeyColumns = allColumns.filter(_.isInstanceOf[NonKeyColumn])
     .asInstanceOf[Seq[NonKeyColumn]].sortWith(
-      (a: NonKeyColumn, b: NonKeyColumn) => {
-        val empty = new HBaseRawType(0)
-        KeyValue.COMPARATOR.compare(
-          new KeyValue(empty, a.familyRaw, a.qualifierRaw),
-          new KeyValue(empty, b.familyRaw, b.qualifierRaw)) < 0
-      }
-    )
+    (a: NonKeyColumn, b: NonKeyColumn) => {
+      val empty = new HBaseRawType(0)
+      KeyValue.COMPARATOR.compare(
+        new KeyValue(empty, a.familyRaw, a.qualifierRaw),
+        new KeyValue(empty, b.familyRaw, b.qualifierRaw)) < 0
+    }
+  )
 
-//  @transient lazy val bytesUtils: BytesUtils = Util.getBytesUtils(encodingFormat)
+  //  @transient lazy val bytesUtils: BytesUtils = Util.getBytesUtils(encodingFormat)
 
   lazy val partitionKeys = keyColumns.map(col => output.find(_.name == col.sqlName).get)
 
   lazy val fieldReadersMap = {
     val fieldCache = new FieldDataCache(encodingFormat, separators, hiveStorage)
-    fieldCache.setFields(allColumns.map(f=> (f.dataType, f.fieldReader)).toMap)
+    fieldCache.setFields(allColumns.map(f => (f.dataType, f.fieldReader)).toMap)
     fieldCache
   }
 
@@ -231,40 +235,31 @@ private[sql] case class HBaseRelation(
   }.toMap
 
   allColumns.zipWithIndex.foreach(pi => pi._1.ordinal = pi._2)
+  // corresponding logical relation
+  @transient lazy val logicalRelation = LogicalRelation(this)
+  @transient lazy val dts: Seq[DataType] = allColumns.map(_.dataType)
+  /**
+   * partitions are updated per table lookup to keep the info reasonably updated
+   */
+  @transient lazy val partitionExpiration =
+    context.conf.asInstanceOf[HBaseSQLConf].partitionExpiration * 1000
+  @transient private[hbase] lazy val dimSize = keyColumns.size
 
+  logDebug(s"HBaseRelation config has zkPort="
+    + s"${getConf.get("hbase.zookeeper.property.clientPort")}")
+  val scannerFetchSize = context.conf.asInstanceOf[HBaseSQLConf].scannerFetchSize
+  @transient var config: Configuration = _
+  var output: Seq[AttributeReference] = logicalRelation.output
+  @transient var partitionTS: Long = _
+  @transient var partitions: Seq[HBasePartition] = _
   private var serializedConfiguration: Array[Byte] = _
+  @transient private var htable_ : HTable = _
 
   def setConfig(inconfig: Configuration) = {
     config = inconfig
     if (inconfig != null) {
       serializedConfiguration = Util.serializeHBaseConfiguration(inconfig)
     }
-  }
-
-  @transient var config: Configuration = _
-
-  private def getConf: Configuration = {
-    if (config == null) {
-      config = {
-        if (serializedConfiguration != null) {
-          Util.deserializeHBaseConfiguration(serializedConfiguration)
-        }
-        else {
-          HBaseConfiguration.create
-        }
-      }
-    }
-    config
-  }
-
-  logDebug(s"HBaseRelation config has zkPort="
-    + s"${getConf.get("hbase.zookeeper.property.clientPort")}")
-
-  @transient private var htable_ : HTable = _
-
-  def htable = {
-    if (htable_ == null) htable_ = new HTable(getConf, hbaseTableName)
-    htable_
   }
 
   def isNonKey(attr: AttributeReference): Boolean = {
@@ -286,92 +281,6 @@ private[sql] case class HBaseRelation(
       htable_.flushCommits()
     }
   }
-
-  def closeHTable() = {
-    if (htable_ != null) {
-      htable_.close()
-      htable_ = null
-    }
-  }
-
-  // corresponding logical relation
-  @transient lazy val logicalRelation = LogicalRelation(this)
-
-  var output: Seq[AttributeReference] = logicalRelation.output
-
-  @transient lazy val dts: Seq[DataType] = allColumns.map(_.dataType)
-
-  /**
-   * partitions are updated per table lookup to keep the info reasonably updated
-   */
-  @transient lazy val partitionExpiration =
-    context.conf.asInstanceOf[HBaseSQLConf].partitionExpiration * 1000
-  @transient var partitionTS: Long = _
-
-  private[hbase] def fetchPartitions(): Unit = {
-    if (System.currentTimeMillis - partitionTS >= partitionExpiration) {
-      partitionTS = System.currentTimeMillis
-      partitions = {
-        val regionLocations = htable.getRegionLocations.asScala.toSeq
-        logInfo(s"Number of HBase regions for " +
-          s"table ${htable.getName.getNameAsString}: ${regionLocations.size}")
-        regionLocations.zipWithIndex.map {
-          case p =>
-            val start: Option[HBaseRawType] = {
-              if (p._1._1.getStartKey.isEmpty) {
-                None
-              } else {
-                Some(p._1._1.getStartKey)
-              }
-            }
-            val end: Option[HBaseRawType] = {
-              if (p._1._1.getEndKey.isEmpty) {
-                None
-              } else {
-                Some(p._1._1.getEndKey)
-              }
-            }
-            new HBasePartition(
-              p._2, p._2,
-              start,
-              end,
-              Some(p._1._2.getHostname), relation = this)
-        }
-      }
-    }
-  }
-
-  @transient var partitions: Seq[HBasePartition] = _
-
-  @transient private[hbase] lazy val dimSize = keyColumns.size
-
-  val scannerFetchSize = context.conf.asInstanceOf[HBaseSQLConf].scannerFetchSize
-
-  private[hbase] def generateRange(partition: HBasePartition, pred: Expression,
-                                   index: Int): Range[_] = {
-    def getData(dt: AtomicType, bound: Option[HBaseRawType]): Option[Any] = {
-      if (bound.isEmpty) {
-        None
-      } else {
-        /**
-         * the partition start/end could be incomplete byte array, so we need to make it
-         * a complete key first
-         */
-        val finalRowKey = getFinalKey(bound)
-        val (start, length) = HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns)(index)
-        Some(fieldReadersMap.get(dt).getValueFromBytes(finalRowKey, start, length).asInstanceOf[dt.InternalType])
-      }
-    }
-
-    val dt = keyColumns(index).dataType.asInstanceOf[AtomicType]
-    val isLastKeyIndex = index == (keyColumns.size - 1)
-    val start = getData(dt, partition.start)
-    val end = getData(dt, partition.end)
-    val startInclusive = start.nonEmpty
-    val endInclusive = end.nonEmpty && !isLastKeyIndex
-    new Range(start, startInclusive, end, endInclusive, dt)
-  }
-
 
   /**
    * Return the start keys of all of the regions in this table,
@@ -416,7 +325,7 @@ private[sql] case class HBaseRelation(
       val items: Seq[(Any, AtomicType)] = cpr.prefix
       val head: Seq[(HBaseRawType, AtomicType)] = items.map {
         case (itemValue, itemType) =>
-//          (DataTypeUtils.dataToBytes(itemValue, itemType, bytesUtils), itemType)
+          //          (DataTypeUtils.dataToBytes(itemValue, itemType, bytesUtils), itemType)
           val reader = fieldReadersMap.get(itemType)
           (reader.getRawBytes(itemValue.asInstanceOf[reader.InternalType]), itemType)
       }
@@ -486,7 +395,7 @@ private[sql] case class HBaseRelation(
           // the last range is a point
           val tail: (HBaseRawType, AtomicType) = {
             val reader = fieldReadersMap.get(keyType)
-//            (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
+            //            (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
             (reader.getRawBytes(startKey.get.asInstanceOf[reader.InternalType]), keyType)
           }
           val rowKeys = head :+ tail
@@ -503,7 +412,7 @@ private[sql] case class HBaseRelation(
           val startFilter: RowFilter = if (startKey.isDefined) {
             val tail: (HBaseRawType, AtomicType) = {
               val reader = fieldReadersMap.get(keyType)
-//              (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
+              //              (DataTypeUtils.dataToBytes(startKey.get, keyType, bytesUtils), keyType)
               (reader.getRawBytes(startKey.get.asInstanceOf[reader.InternalType]), keyType)
             }
             val rowKeys = head :+ tail
@@ -530,7 +439,7 @@ private[sql] case class HBaseRelation(
           val endFilter: RowFilter = if (endKey.isDefined) {
             val tail: (HBaseRawType, AtomicType) = {
               val reader = fieldReadersMap.get(keyType)
-//              (DataTypeUtils.dataToBytes(endKey.get, keyType, bytesUtils), keyType)
+              //              (DataTypeUtils.dataToBytes(endKey.get, keyType, bytesUtils), keyType)
               (reader.getRawBytes(endKey.get.asInstanceOf[reader.InternalType]), keyType)
             }
             val rowKeys = head :+ tail
@@ -645,26 +554,6 @@ private[sql] case class HBaseRelation(
     }
   }
 
-  /**
-   * add the filter to the filter list
-   * @param filters the filter list
-   * @param filtersToBeAdded the filter to be added
-   * @param operator the operator of the filter to be added
-   */
-  private def addToFilterList(filters: java.util.ArrayList[filter.Filter],
-                              filtersToBeAdded: Option[FilterList],
-                              operator: FilterList.Operator) = {
-    if (filtersToBeAdded.isDefined) {
-      val filterList = filtersToBeAdded.get
-      val size = filterList.getFilters.size
-      if (size == 1 || filterList.getOperator == operator) {
-        filterList.getFilters.map(p => filters.add(p))
-      } else {
-        filters.add(filterList)
-      }
-    }
-  }
-
   def createSingleColumnValueFilter(left: AttributeReference, right: Literal,
                                     compareOp: CompareFilter.CompareOp): Option[FilterList] = {
     val nonKeyColumn = nonKeyColumns.find(_.sqlName == left.name)
@@ -681,105 +570,11 @@ private[sql] case class HBaseRelation(
     }
   }
 
-  /**
-   * recursively create the filter list based on predicate
-   * @param pred the predicate
-   * @return the filter list, or None if predicate is not defined
-   */
-  private def buildFilterListFromPred(pred: Option[Expression]): Option[FilterList] = {
-    if (pred.isEmpty) {
-      None
-    } else {
-      val expression = pred.get
-      expression match {
-        case expressions.And(left, right) =>
-          val filters = new java.util.ArrayList[filter.Filter]
-          if (left != null) {
-            val leftFilterList = buildFilterListFromPred(Some(left))
-            addToFilterList(filters, leftFilterList, FilterList.Operator.MUST_PASS_ALL)
-          }
-          if (right != null) {
-            val rightFilterList = buildFilterListFromPred(Some(right))
-            addToFilterList(filters, rightFilterList, FilterList.Operator.MUST_PASS_ALL)
-          }
-          Some(new FilterList(FilterList.Operator.MUST_PASS_ALL, filters))
-        case expressions.Or(left, right) =>
-          val filters = new java.util.ArrayList[filter.Filter]
-          if (left != null) {
-            val leftFilterList = buildFilterListFromPred(Some(left))
-            addToFilterList(filters, leftFilterList, FilterList.Operator.MUST_PASS_ONE)
-          }
-          if (right != null) {
-            val rightFilterList = buildFilterListFromPred(Some(right))
-            addToFilterList(filters, rightFilterList, FilterList.Operator.MUST_PASS_ONE)
-          }
-          Some(new FilterList(FilterList.Operator.MUST_PASS_ONE, filters))
-        case InSet(value@AttributeReference(name, dataType, _, _), hset) =>
-          val column = nonKeyColumns.find(_.sqlName == name)
-          if (column.isDefined) {
-            val filterList = new FilterList(FilterList.Operator.MUST_PASS_ONE)
-            for (item <- hset) {
-              val filter = new SingleColumnValueFilter(column.get.familyRaw,
-                column.get.qualifierRaw,
-                CompareFilter.CompareOp.EQUAL,
-                DataTypeUtils.getBinaryComparator(fieldReadersMap.get(dataType),
-                  Literal.create(item, dataType)))
-              filterList.addFilter(filter)
-            }
-            Some(filterList)
-          } else {
-            None
-          }
-        case expressions.In(value@AttributeReference(name, dataType, _, _), list) =>
-          val column = nonKeyColumns.find(_.sqlName == name)
-          if (column.isDefined) {
-            val filterList = new FilterList(FilterList.Operator.MUST_PASS_ONE)
-            for (item <- list) {
-              val filter = new SingleColumnValueFilter(column.get.familyRaw,
-                column.get.qualifierRaw,
-                CompareFilter.CompareOp.EQUAL,
-                DataTypeUtils.getBinaryComparator(fieldReadersMap.get(dataType),
-                  item.asInstanceOf[Literal]))
-              filterList.addFilter(filter)
-            }
-            Some(filterList)
-          } else {
-            None
-          }
-        case expressions.GreaterThan(left: AttributeReference, right: Literal) =>
-          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.GREATER)
-        case expressions.GreaterThan(left: Literal, right: AttributeReference) =>
-          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.GREATER)
-        case expressions.GreaterThanOrEqual(left: AttributeReference, right: Literal) =>
-          createSingleColumnValueFilter(left, right,
-            CompareFilter.CompareOp.GREATER_OR_EQUAL)
-        case expressions.GreaterThanOrEqual(left: Literal, right: AttributeReference) =>
-          createSingleColumnValueFilter(right, left,
-            CompareFilter.CompareOp.GREATER_OR_EQUAL)
-        case expressions.EqualTo(left: AttributeReference, right: Literal) =>
-          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.EQUAL)
-        case expressions.EqualTo(left: Literal, right: AttributeReference) =>
-          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.EQUAL)
-        case expressions.LessThan(left: AttributeReference, right: Literal) =>
-          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.LESS)
-        case expressions.LessThan(left: Literal, right: AttributeReference) =>
-          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.LESS)
-        case expressions.LessThanOrEqual(left: AttributeReference, right: Literal) =>
-          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.LESS_OR_EQUAL)
-        case expressions.LessThanOrEqual(left: Literal, right: AttributeReference) =>
-          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.LESS_OR_EQUAL)
-        case _ => None
-      }
-    }
-  }
-
   def buildPut(row: InternalRow): Put = {
     // TODO: revisit this using new KeyComposer
     val rowKey: HBaseRawType = null
     new Put(rowKey)
   }
-
-  def sqlContext = context
 
   def schema: StructType = StructType(allColumns.map {
     case KeyColumn(name, dt, _, _) => StructField(name, dt, nullable = false)
@@ -808,8 +603,8 @@ private[sql] case class HBaseRelation(
     while (iterator.hasNext) {
       isSkip = false
       val row = iterator.next()
-      val seq = row.toSeq.map{
-        case s:String => UTF8String.fromString(s)
+      val seq = row.toSeq.map {
+        case s: String => UTF8String.fromString(s)
         case other => other
       }
       val internalRow = InternalRow.fromSeq(seq)
@@ -859,6 +654,8 @@ private[sql] case class HBaseRelation(
     sqlContext.sparkContext.runJob(data.rdd, deleteFromHBase _)
   }
 
+  def sqlContext = context
+
   def deleteFromHBase(context: TaskContext, iterator: Iterator[Row]) = {
     // TODO:make the BatchMaxSize configurable
     val BatchMaxSize = 100
@@ -869,7 +666,7 @@ private[sql] case class HBaseRelation(
     val deletes = new java.util.ArrayList[Delete]()
     while (iterator.hasNext) {
       val row = iterator.next()
-      val seq = row.toSeq.map{
+      val seq = row.toSeq.map {
         case s: String => UTF8String.fromString(s)
         case other => other
       }
@@ -897,6 +694,32 @@ private[sql] case class HBaseRelation(
       rowIndexInBatch = 0
     }
     closeHTable()
+  }
+
+  def htable = {
+    if (htable_ == null) htable_ = new HTable(getConf, hbaseTableName)
+    htable_
+  }
+
+  private def getConf: Configuration = {
+    if (config == null) {
+      config = {
+        if (serializedConfiguration != null) {
+          Util.deserializeHBaseConfiguration(serializedConfiguration)
+        }
+        else {
+          HBaseConfiguration.create
+        }
+      }
+    }
+    config
+  }
+
+  def closeHTable() = {
+    if (htable_ != null) {
+      htable_.close()
+      htable_ = null
+    }
   }
 
   def buildScan(requiredColumns: Seq[Attribute], filters: Seq[Expression]): RDD[InternalRow] = {
@@ -1067,39 +890,15 @@ private[sql] case class HBaseRelation(
     // TODO: add columns to the Get
   }
 
-//  /**
-//   *
-//   * @param kv the cell value to work with
-//   * @param projection the pair of projection and its index
-//   * @param row the row to set values on
-//   */
-//  private def setColumn(kv: Cell, projection: (Attribute, Int), row: MutableRow,
-//                        bytesUtils: BytesUtils): Unit = {
-//    if (kv == null || kv.getValueLength == 0) {
-//      row.setNullAt(projection._2)
-//    } else {
-//      val dt = projection._1.dataType
-//      if (dt.isInstanceOf[AtomicType]) {
-//        DataTypeUtils.setRowColumnFromHBaseRawType(
-//          row, projection._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength, dt, bytesUtils)
-//      } else {
-//        // for complex types, deserialiation is involved and we aren't sure about buffer safety
-//        val colValue = CellUtil.cloneValue(kv)
-//        DataTypeUtils.setRowColumnFromHBaseRawType(
-//          row, projection._2, colValue, 0, colValue.length, dt, bytesUtils)
-//      }
-//    }
-//  }
-
   def buildRowAfterCoprocessor(projections: Seq[(Attribute, Int)],
                                result: Result,
                                row: MutableRow): InternalRow = {
-    projections.foreach {p =>
+    projections.foreach { p =>
       val kv = result.rawCells()(p._2)
       if (kv == null || kv.getValueLength == 0) {
         row.setNullAt(p._2)
       } else {
-        fieldReadersMap.get(p._1.dataType).setDataInRow(row,p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
+        fieldReadersMap.get(p._1.dataType).setDataInRow(row, p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
       }
     }
     row
@@ -1150,17 +949,17 @@ private[sql] case class HBaseRelation(
         columnMap.get(p._1.name).get match {
           case column: NonKeyColumn =>
             val kv = getColumnLatestCell(column.familyRaw, column.qualifierRaw)
-//            setColumn(kv, p, row, bytesUtils)
+            //            setColumn(kv, p, row, bytesUtils)
             if (kv == null || kv.getValueLength == 0) {
               row.setNullAt(p._2)
             } else {
-              column.fieldReader.setDataInRow(row,p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
+              column.fieldReader.setDataInRow(row, p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
             }
           case key: KeyColumn =>
             val (start, length) = rowKeys(key.order)
-//            DataTypeUtils.setRowColumnFromHBaseRawType(
-//              row, p._2, result.head.getRowArray, start, length, keyColumns(keyIndex).dataType, bytesUtils)
-            key.fieldReader.setDataInRow(row,p._2, result.head.getRowArray, start, length)
+            //            DataTypeUtils.setRowColumnFromHBaseRawType(
+            //              row, p._2, result.head.getRowArray, start, length, keyColumns(keyIndex).dataType, bytesUtils)
+            key.fieldReader.setDataInRow(row, p._2, result.head.getRowArray, start, length)
         }
     }
     row
@@ -1175,21 +974,61 @@ private[sql] case class HBaseRelation(
         columnMap.get(p._1.name).get match {
           case column: NonKeyColumn =>
             val kv: Cell = result.getColumnLatestCell(column.familyRaw, column.qualifierRaw)
-//            setColumn(kv, p, row, bytesUtils)
+            //            setColumn(kv, p, row, bytesUtils)
             if (kv == null || kv.getValueLength == 0) {
               row.setNullAt(p._2)
             } else {
-              column.fieldReader.setDataInRow(row,p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
+              column.fieldReader.setDataInRow(row, p._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength)
             }
           case key: KeyColumn =>
             val (start, length) = rowKeys(key.order)
-            key.fieldReader.setDataInRow(row,p._2, result.getRow, start, length)
-//            DataTypeUtils.setRowColumnFromHBaseRawType(
-//              row, p._2, result.getRow, start, length, keyColumns(key.order).dataType, bytesUtils)
+            key.fieldReader.setDataInRow(row, p._2, result.getRow, start, length)
+          //            DataTypeUtils.setRowColumnFromHBaseRawType(
+          //              row, p._2, result.getRow, start, length, keyColumns(key.order).dataType, bytesUtils)
         }
     }
     row
   }
+
+  /**
+   * Convert a HBase row key into column values in their native data formats
+   * @param rawKey the HBase row key
+   * @return A sequence of column values from the row Key
+   */
+  def nativeKeyConvert(rawKey: Option[HBaseRawType]): Seq[Any] = {
+    if (rawKey.isEmpty) Nil
+    else {
+      val finalRowKey = getFinalKey(rawKey)
+
+      HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns).
+        zipWithIndex.map(pi => keyColumns(pi._2).fieldReader.getValueFromBytes(finalRowKey,
+        pi._1._1, pi._1._2))
+    }
+  }
+
+  //  /**
+  //   *
+  //   * @param kv the cell value to work with
+  //   * @param projection the pair of projection and its index
+  //   * @param row the row to set values on
+  //   */
+  //  private def setColumn(kv: Cell, projection: (Attribute, Int), row: MutableRow,
+  //                        bytesUtils: BytesUtils): Unit = {
+  //    if (kv == null || kv.getValueLength == 0) {
+  //      row.setNullAt(projection._2)
+  //    } else {
+  //      val dt = projection._1.dataType
+  //      if (dt.isInstanceOf[AtomicType]) {
+  //        DataTypeUtils.setRowColumnFromHBaseRawType(
+  //          row, projection._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength, dt, bytesUtils)
+  //      } else {
+  //        // for complex types, deserialiation is involved and we aren't sure about buffer safety
+  //        val colValue = CellUtil.cloneValue(kv)
+  //        DataTypeUtils.setRowColumnFromHBaseRawType(
+  //          row, projection._2, colValue, 0, colValue.length, dt, bytesUtils)
+  //      }
+  //    }
+  //  }
 
   /**
    * Convert the row key to its proper format. Due to the nature of HBase, the start and
@@ -1256,7 +1095,7 @@ private[sql] case class HBaseRelation(
       keyColumns.drop(startKeyIndex).map(k => {
         k.dataType match {
           case StringType => 1
-          case dt:DecimalType => 4
+          case dt: DecimalType => 4
           case _ => k.dataType.asInstanceOf[AtomicType].defaultSize
         }
       }
@@ -1266,24 +1105,180 @@ private[sql] case class HBaseRelation(
     getFinalRowKey(0, 0)
   }
 
-  /**
-   * Convert a HBase row key into column values in their native data formats
-   * @param rawKey the HBase row key
-   * @return A sequence of column values from the row Key
-   */
-  def nativeKeyConvert(rawKey: Option[HBaseRawType]): Seq[Any] = {
-    if (rawKey.isEmpty) Nil
-    else {
-      val finalRowKey = getFinalKey(rawKey)
+  private[hbase] def fetchPartitions(): Unit = {
+    if (System.currentTimeMillis - partitionTS >= partitionExpiration) {
+      partitionTS = System.currentTimeMillis
+      partitions = {
+        val regionLocations = htable.getRegionLocations.asScala.toSeq
+        logInfo(s"Number of HBase regions for " +
+          s"table ${htable.getName.getNameAsString}: ${regionLocations.size}")
+        regionLocations.zipWithIndex.map {
+          case p =>
+            val start: Option[HBaseRawType] = {
+              if (p._1._1.getStartKey.isEmpty) {
+                None
+              } else {
+                Some(p._1._1.getStartKey)
+              }
+            }
+            val end: Option[HBaseRawType] = {
+              if (p._1._1.getEndKey.isEmpty) {
+                None
+              } else {
+                Some(p._1._1.getEndKey)
+              }
+            }
+            new HBasePartition(
+              p._2, p._2,
+              start,
+              end,
+              Some(p._1._2.getHostname), relation = this)
+        }
+      }
+    }
+  }
 
-      HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns).
-        zipWithIndex.map(pi => keyColumns(pi._2).fieldReader.getValueFromBytes(finalRowKey,
-        pi._1._1, pi._1._2))
+  private[hbase] def generateRange(partition: HBasePartition, pred: Expression,
+                                   index: Int): Range[_] = {
+    def getData(dt: AtomicType, bound: Option[HBaseRawType]): Option[Any] = {
+      if (bound.isEmpty) {
+        None
+      } else {
+        /**
+         * the partition start/end could be incomplete byte array, so we need to make it
+         * a complete key first
+         */
+        val finalRowKey = getFinalKey(bound)
+        val (start, length) = HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns)(index)
+        Some(fieldReadersMap.get(dt).getValueFromBytes(finalRowKey, start, length).asInstanceOf[dt.InternalType])
+      }
+    }
+
+    val dt = keyColumns(index).dataType.asInstanceOf[AtomicType]
+    val isLastKeyIndex = index == (keyColumns.size - 1)
+    val start = getData(dt, partition.start)
+    val end = getData(dt, partition.end)
+    val startInclusive = start.nonEmpty
+    val endInclusive = end.nonEmpty && !isLastKeyIndex
+    new Range(start, startInclusive, end, endInclusive, dt)
+  }
+
+  /**
+   * add the filter to the filter list
+   * @param filters the filter list
+   * @param filtersToBeAdded the filter to be added
+   * @param operator the operator of the filter to be added
+   */
+  private def addToFilterList(filters: java.util.ArrayList[filter.Filter],
+                              filtersToBeAdded: Option[FilterList],
+                              operator: FilterList.Operator) = {
+    if (filtersToBeAdded.isDefined) {
+      val filterList = filtersToBeAdded.get
+      val size = filterList.getFilters.size
+      if (size == 1 || filterList.getOperator == operator) {
+        filterList.getFilters.map(p => filters.add(p))
+      } else {
+        filters.add(filterList)
+      }
+    }
+  }
+
+  /**
+   * recursively create the filter list based on predicate
+   * @param pred the predicate
+   * @return the filter list, or None if predicate is not defined
+   */
+  private def buildFilterListFromPred(pred: Option[Expression]): Option[FilterList] = {
+    if (pred.isEmpty) {
+      None
+    } else {
+      val expression = pred.get
+      expression match {
+        case expressions.And(left, right) =>
+          val filters = new java.util.ArrayList[filter.Filter]
+          if (left != null) {
+            val leftFilterList = buildFilterListFromPred(Some(left))
+            addToFilterList(filters, leftFilterList, FilterList.Operator.MUST_PASS_ALL)
+          }
+          if (right != null) {
+            val rightFilterList = buildFilterListFromPred(Some(right))
+            addToFilterList(filters, rightFilterList, FilterList.Operator.MUST_PASS_ALL)
+          }
+          Some(new FilterList(FilterList.Operator.MUST_PASS_ALL, filters))
+        case expressions.Or(left, right) =>
+          val filters = new java.util.ArrayList[filter.Filter]
+          if (left != null) {
+            val leftFilterList = buildFilterListFromPred(Some(left))
+            addToFilterList(filters, leftFilterList, FilterList.Operator.MUST_PASS_ONE)
+          }
+          if (right != null) {
+            val rightFilterList = buildFilterListFromPred(Some(right))
+            addToFilterList(filters, rightFilterList, FilterList.Operator.MUST_PASS_ONE)
+          }
+          Some(new FilterList(FilterList.Operator.MUST_PASS_ONE, filters))
+        case InSet(value@AttributeReference(name, dataType, _, _), hset) =>
+          val column = nonKeyColumns.find(_.sqlName == name)
+          if (column.isDefined) {
+            val filterList = new FilterList(FilterList.Operator.MUST_PASS_ONE)
+            for (item <- hset) {
+              val filter = new SingleColumnValueFilter(column.get.familyRaw,
+                column.get.qualifierRaw,
+                CompareFilter.CompareOp.EQUAL,
+                DataTypeUtils.getBinaryComparator(fieldReadersMap.get(dataType),
+                  Literal.create(item, dataType)))
+              filterList.addFilter(filter)
+            }
+            Some(filterList)
+          } else {
+            None
+          }
+        case expressions.In(value@AttributeReference(name, dataType, _, _), list) =>
+          val column = nonKeyColumns.find(_.sqlName == name)
+          if (column.isDefined) {
+            val filterList = new FilterList(FilterList.Operator.MUST_PASS_ONE)
+            for (item <- list) {
+              val filter = new SingleColumnValueFilter(column.get.familyRaw,
+                column.get.qualifierRaw,
+                CompareFilter.CompareOp.EQUAL,
+                DataTypeUtils.getBinaryComparator(fieldReadersMap.get(dataType),
+                  item.asInstanceOf[Literal]))
+              filterList.addFilter(filter)
+            }
+            Some(filterList)
+          } else {
+            None
+          }
+        case expressions.GreaterThan(left: AttributeReference, right: Literal) =>
+          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.GREATER)
+        case expressions.GreaterThan(left: Literal, right: AttributeReference) =>
+          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.GREATER)
+        case expressions.GreaterThanOrEqual(left: AttributeReference, right: Literal) =>
+          createSingleColumnValueFilter(left, right,
+            CompareFilter.CompareOp.GREATER_OR_EQUAL)
+        case expressions.GreaterThanOrEqual(left: Literal, right: AttributeReference) =>
+          createSingleColumnValueFilter(right, left,
+            CompareFilter.CompareOp.GREATER_OR_EQUAL)
+        case expressions.EqualTo(left: AttributeReference, right: Literal) =>
+          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.EQUAL)
+        case expressions.EqualTo(left: Literal, right: AttributeReference) =>
+          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.EQUAL)
+        case expressions.LessThan(left: AttributeReference, right: Literal) =>
+          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.LESS)
+        case expressions.LessThan(left: Literal, right: AttributeReference) =>
+          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.LESS)
+        case expressions.LessThanOrEqual(left: AttributeReference, right: Literal) =>
+          createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.LESS_OR_EQUAL)
+        case expressions.LessThanOrEqual(left: Literal, right: AttributeReference) =>
+          createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.LESS_OR_EQUAL)
+        case _ => None
+      }
     }
   }
 }
 
 private[hbase] object HBaseRelation {
+  val zeroByte: Array[Byte] = new Array(1)
+  val utf8Padding: Byte = 0x80.asInstanceOf[Byte]
   //  Copied from UTF8String for accessibility reasons therein
   private val bytesOfCodePointInUTF8: Array[Int] = Array(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
@@ -1297,8 +1292,5 @@ private[hbase] object HBaseRelation {
     val offset = (b & 0xFF) - 192
     if (offset >= 0) bytesOfCodePointInUTF8(offset) else 1
   }
-
-  val zeroByte: Array[Byte] = new Array(1)
-  val utf8Padding: Byte = 0x80.asInstanceOf[Byte]
 }
 

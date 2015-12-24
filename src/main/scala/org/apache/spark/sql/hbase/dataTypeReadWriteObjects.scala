@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.hbase
 
-import java.io.{DataOutputStream, ObjectOutputStream, ByteArrayOutputStream}
+import java.io.{ByteArrayOutputStream, DataOutputStream}
 
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.Logging
@@ -91,7 +91,7 @@ object FieldFactory {
   def createFieldData(dataType: DataType,
                       encodingFormat: String,
                       separators: Array[Byte],
-                      level: Int = 0, hiveStore: Boolean =  false): FieldData = {
+                      level: Int = 0, hiveStore: Boolean = false): FieldData = {
     encodingFormat match {
       case BINARY_FORMAT =>
         dataType match {
@@ -263,11 +263,9 @@ abstract class FieldData extends Serializable with Logging {
 
   def getDataStorageFormat: String
 
-  protected def getIndex(bytes: HBaseRawType, offset: Int, length: Int, separator: Byte): Int =
-  {
-    for(a <- 0 until length )
-    {
-      if(bytes(offset+a) == separator) return a
+  protected def getIndex(bytes: HBaseRawType, offset: Int, length: Int, separator: Byte): Int = {
+    for (a <- 0 until length) {
+      if (bytes(offset + a) == separator) return a
     }
     -1
   }
@@ -310,14 +308,15 @@ case class ArrayDataField(dataType: ArrayType,
                           encodingFormat: String,
                           separators: Array[Byte],
                           level: Int,
-                           hiveStorage: Boolean) extends FieldData {
+                          hiveStorage: Boolean) extends FieldData {
 
   type InternalType = ArrayData
 
   val separator = separators(0)
 
-  val elementField: FieldData = FieldFactory.createFieldData(dataType.elementType,
-  {if(hiveStorage)FieldFactory.STRING_FORMAT else  encodingFormat}, separators, level + 1)
+  val elementField: FieldData = FieldFactory.createFieldData(dataType.elementType, {
+    if (hiveStorage) FieldFactory.STRING_FORMAT else encodingFormat
+  }, separators, level + 1)
 
   def setDataInRow(row: MutableRow, index: Int, src: HBaseRawType, offset: Int, length: Int) {
     row.update(index, getValueFromBytes(src, offset, length))
@@ -328,13 +327,14 @@ case class ArrayDataField(dataType: ArrayType,
     val list = new ArrayBuffer[elementField.InternalType]()
     var offsetLocal = offset
     var lenLocal = length
-    while(index > 0) {length
+    while (index > 0) {
+      length
       list += elementField.getValueFromBytes(bytes, offsetLocal, index)
-      offsetLocal = offsetLocal+index+1
-      lenLocal = lenLocal-(index+1)
+      offsetLocal = offsetLocal + index + 1
+      lenLocal = lenLocal - (index + 1)
       index = getIndex(bytes, offsetLocal, lenLocal, separator)
     }
-    if(index < 0) list += elementField.getValueFromBytes(bytes, offsetLocal, lenLocal)
+    if (index < 0) list += elementField.getValueFromBytes(bytes, offsetLocal, lenLocal)
     new GenericArrayData(list.toArray)
   }
 
@@ -349,7 +349,7 @@ case class ArrayDataField(dataType: ArrayType,
     value.foreach(dataType.elementType, writeData)
     def writeData(index: Int, data: Any) {
       o.write(elementField.getRawBytes(data.asInstanceOf[elementField.InternalType]))
-      if(index < numElements-1)
+      if (index < numElements - 1)
         o.write(separator)
     }
     o.close()
@@ -376,8 +376,9 @@ case class StructDataField(dataType: StructType,
   val separator = separators(level)
 
   val fields = dataType.fields.map { sf =>
-    FieldFactory.createFieldData(sf.dataType,
-    {if(hiveStorage)FieldFactory.STRING_FORMAT else  encodingFormat}, separators, level + 1)
+    FieldFactory.createFieldData(sf.dataType, {
+      if (hiveStorage) FieldFactory.STRING_FORMAT else encodingFormat
+    }, separators, level + 1)
   }
 
   def setDataInRow(row: MutableRow, index: Int, src: HBaseRawType, offset: Int, length: Int) {
@@ -390,12 +391,12 @@ case class StructDataField(dataType: StructType,
     var lenLocal = length
     val row = new GenericMutableRow(fields.size)
     var i = 0
-    while(index > 0) {
+    while (index > 0) {
       row.update(i, fields(i).getValueFromBytes(bytes, offsetLocal, index))
-      offsetLocal = offsetLocal+index+1
-      lenLocal = lenLocal-(index+1)
+      offsetLocal = offsetLocal + index + 1
+      lenLocal = lenLocal - (index + 1)
       index = getIndex(bytes, offsetLocal, lenLocal, separator)
-      i = i+1
+      i = i + 1
     }
     row.update(i, fields(i).getValueFromBytes(bytes, offsetLocal, lenLocal))
     row
@@ -409,11 +410,10 @@ case class StructDataField(dataType: StructType,
     val b = new ByteArrayOutputStream()
     val o = new DataOutputStream(b)
     val numElements: Int = value.numFields
-    for(a <- 0 until numElements)
-    {
+    for (a <- 0 until numElements) {
       val f = fields(a)
       o.write(f.getRawBytes(value.get(a, dataType.fields(a).dataType).asInstanceOf[f.InternalType]))
-      if(a < numElements-1)
+      if (a < numElements - 1)
         o.write(separator)
     }
     o.close()
@@ -444,10 +444,12 @@ case class MapDataField(dataType: MapType,
   val keySeparator = separators(level + 1)
 
   val (keyField, valField) =
-    (FieldFactory.createFieldData(dataType.keyType,
-    {if(hiveStorage)FieldFactory.STRING_FORMAT else  encodingFormat}, separators, level + 2),
-      FieldFactory.createFieldData(dataType.valueType,
-      {if(hiveStorage)FieldFactory.STRING_FORMAT else  encodingFormat}, separators, level + 2))
+    (FieldFactory.createFieldData(dataType.keyType, {
+      if (hiveStorage) FieldFactory.STRING_FORMAT else encodingFormat
+    }, separators, level + 2),
+      FieldFactory.createFieldData(dataType.valueType, {
+        if (hiveStorage) FieldFactory.STRING_FORMAT else encodingFormat
+      }, separators, level + 2))
 
   def setDataInRow(row: MutableRow, index: Int, src: HBaseRawType, offset: Int, length: Int) {
     row.update(index, getValueFromBytes(src, offset, length))
@@ -459,22 +461,24 @@ case class MapDataField(dataType: MapType,
     val valList = new ArrayBuffer[valField.InternalType]()
     var offsetLocal = offset
     var lenLocal = length
-    while(index > 0) {
+    while (index > 0) {
       val keyIndex = getIndex(bytes, offsetLocal, index, keySeparator)
       keyList += keyField.getValueFromBytes(bytes, offsetLocal, keyIndex)
-      valList += valField.getValueFromBytes(bytes, offsetLocal+keyIndex+1, {if(index<0)lenLocal else index-(keyIndex+1)})
-      lenLocal = lenLocal-(index+1)
-      offsetLocal = offsetLocal+index+1
+      valList += valField.getValueFromBytes(bytes, offsetLocal + keyIndex + 1, {
+        if (index < 0) lenLocal else index - (keyIndex + 1)
+      })
+      lenLocal = lenLocal - (index + 1)
+      offsetLocal = offsetLocal + index + 1
       index = getIndex(bytes, offsetLocal, lenLocal, collSeparator)
     }
-    if(index < 0) {
+    if (index < 0) {
       val keyIndex = getIndex(bytes, offsetLocal, lenLocal, keySeparator)
       keyList += keyField.getValueFromBytes(bytes, offsetLocal, keyIndex)
-      lenLocal = lenLocal-(keyIndex+1)
-      valList += valField.getValueFromBytes(bytes, offsetLocal+keyIndex+1, lenLocal)
+      lenLocal = lenLocal - (keyIndex + 1)
+      valList += valField.getValueFromBytes(bytes, offsetLocal + keyIndex + 1, lenLocal)
     }
 
-//    HBaseSerializer.deserialize(bytes, offset, length).asInstanceOf[InternalType]
+    //    HBaseSerializer.deserialize(bytes, offset, length).asInstanceOf[InternalType]
     new ArrayBasedMapData(new GenericArrayData(keyList.toArray), new GenericArrayData(valList.toArray))
   }
 
@@ -488,13 +492,12 @@ case class MapDataField(dataType: MapType,
     val numElements: Int = value.numElements()
     val keyArray = value.keyArray().toArray(dataType.keyType).asInstanceOf[Array[keyField.InternalType]]
     val valueArray = value.valueArray().toArray(dataType.valueType).asInstanceOf[Array[valField.InternalType]]
-    for(a <- 0 until numElements)
-    {
+    for (a <- 0 until numElements) {
       val d =
-      o.write(keyField.getRawBytes(keyArray(a)))
+        o.write(keyField.getRawBytes(keyArray(a)))
       o.write(keySeparator)
       o.write(valField.getRawBytes(valueArray(a)))
-      if(a < numElements-1)
+      if (a < numElements - 1)
         o.write(collSeparator)
     }
     o.close()
@@ -699,7 +702,7 @@ abstract class AbstractDecimalDataField(val dataType: DecimalType) extends Field
 
   def parseStringToDataInternal(input: String): InternalType = {
     val decimal: Decimal = Decimal(BigDecimal(input))
-//    decimal.changePrecision(dataType.precision, dataType.scale)
+    //    decimal.changePrecision(dataType.precision, dataType.scale)
     decimal
   }
 }
