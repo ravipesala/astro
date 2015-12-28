@@ -445,7 +445,9 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
     var canAddOne: Boolean = true
     val fieldData = relation.fieldReadersMap.get(dt)
     if (dt == StringType || dt == DecimalType) {
-      val newString = HBaseKVHelper.addOneString(fieldData.getRawBytes(value.asInstanceOf[fieldData.InternalType]))
+      val newString = HBaseKVHelper.addOneString(
+        fieldData.getRawBytes(value.asInstanceOf[fieldData.InternalType]),
+        relation.keyFactory.delimiter)
       val newValue = fieldData.getValueFromBytes(newString, 0, newString.length)
       node.currentValue = newValue
     } else {
@@ -496,7 +498,7 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
       }
       node = levelNode
     }
-    HBaseKVHelper.encodingRawKeyColumns(list.toSeq)
+    relation.keyFactory.encodingRawKeyColumns(list.toSeq)
   }
 
   /**

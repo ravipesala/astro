@@ -356,27 +356,29 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
 
-    val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
+    val keyFactory = new AstroKeyFactory
+
+    val rowkey0 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(0.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(7.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey1 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey2 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey3 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(3.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(4.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey4 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(3.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(6.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
@@ -443,27 +445,29 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
 
-    val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
+    val keyFactory = new AstroKeyFactory
+
+    val rowkey0 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey1 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey2 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(32.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(16.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey3 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(64.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(128.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey4 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(1024.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(256.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
@@ -543,27 +547,29 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
 
-    val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
+    val keyFactory = new AstroKeyFactory
+
+    val rowkey0 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey1 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey2 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(32.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(16.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey3 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(64.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(128.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey4 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(1024.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(256.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
@@ -641,31 +647,33 @@ class CriticalPointsTestSuite extends FunSuite with BeforeAndAfterAll with Loggi
 
     val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
 
-    val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
+    val keyFactory = new AstroKeyFactory
+
+    val rowkey0 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(16.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey1 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(32.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey2 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(64.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey3 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(128.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey4 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(256.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))

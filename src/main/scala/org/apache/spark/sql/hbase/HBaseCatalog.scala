@@ -173,7 +173,9 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
   def createTable(tableName: String, hbaseNamespace: String, hbaseTableName: String,
                   allColumns: Seq[AbstractColumn], splitKeys: Array[Array[Byte]],
                   separators: Array[Byte],
-                  encodingFormat: String, hiveStorage: Boolean = false): HBaseRelation = {
+                  encodingFormat: String,
+                  keyFactory: KeyFactory,
+                  hiveStorage: Boolean = false): HBaseRelation = {
 
     // create a new hbase table for the user if not exist
     val nonKeyColumns = allColumns.filter(_.isInstanceOf[NonKeyColumn])
@@ -193,7 +195,7 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
     }
 
     val hbaseRelation = HBaseRelation(tableName, hbaseNamespace, hbaseTableName,
-      allColumns, deploySuccessfully, separators, encodingFormat, hiveStorage)(hbaseContext)
+      allColumns, deploySuccessfully, separators, encodingFormat, keyFactory, hiveStorage)(hbaseContext)
     hbaseRelation.setConfig(configuration)
     hbaseRelation.fetchPartitions()
     hbaseRelation

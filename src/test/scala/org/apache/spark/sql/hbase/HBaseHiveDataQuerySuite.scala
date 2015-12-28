@@ -23,6 +23,7 @@ import org.apache.hadoop.hbase.client.{HTable, Put}
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.{TableExistsException, TableName}
 import org.apache.spark.sql.hbase.TestHbase._
+import org.apache.spark.sql.types.{ShortType, IntegerType, DoubleType}
 
 class HBaseHiveDataQuerySuite extends TestBaseWithNonSplitData {
 
@@ -40,7 +41,7 @@ class HBaseHiveDataQuerySuite extends TestBaseWithNonSplitData {
          |  intcol INT,
          |  longcol BIGINT,
          |  floatcol FLOAT,
-         |  doublecol DOUBLE )
+         |  stuctcol struct<doublecol:DOUBLE, intstrtcol:INT, shortstrtcol:SMALLINT> )
          | ROW FORMAT DELIMITED
          | COLLECTION ITEMS TERMINATED BY '~'
          | stored by 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
@@ -56,8 +57,13 @@ class HBaseHiveDataQuerySuite extends TestBaseWithNonSplitData {
   def loadDataToHbase() {
     val config = sparkContext.hadoopConfiguration
     val table = new HTable(config, TestHBaseTablePreLoadName)
+    val keyFactory = new SimpleKeyFactory('~'.toByte)
     sparkContext.textFile("file:///" + new File(s"$CsvPath/$DefaultLoadFile").getAbsolutePath).map(_.split(",")).collect().map { line =>
-      val put = new Put(Bytes.toBytes(line(6).toDouble))
+      val key = keyFactory.encodingRawKeyColumns(
+        Seq((Bytes.toBytes(line(6).toDouble),DoubleType),
+          (Bytes.toBytes(line(3).toInt),IntegerType),
+          (Bytes.toBytes(line(2).toShort),ShortType)))
+      val put = new Put(key)
       put.add(Bytes.toBytes(TestHbaseColFamilies(0)), Bytes.toBytes("hstrcol"), Bytes.toBytes(line(0).toString))
       //      put.add(Bytes.toBytes(TestHbaseColFamilies(0)), Bytes.toBytes("hbytecol"), Bytes.toBytes(line(1).toByte))
       put.add(Bytes.toBytes(TestHbaseColFamilies(0)), Bytes.toBytes("hshortcol"), Bytes.toBytes(line(2).toShort))

@@ -238,4 +238,39 @@ class HBaseBasicQueriesSuite extends TestBaseWithNonSplitData {
 
     logInfo(s"Test $testnm completed successfully")
   }
+
+  testnm = "Mixed And/or predicates for Simple Key"
+  test("Mixed And/or predicates for Simple Key") {
+    val query1 = s"""SELECT doublecol AS double1, -1 * doublecol AS minusdouble,
+     substr(strcol, 2) AS substrcol, doublecol, strcol,
+     bytecol, shortcol, intcol, longcol, floatcol FROM $TestSimpleKeyTableName
+     WHERE strcol LIKE '%Row%'
+       AND shortcol < 12345
+       AND doublecol > 5678912.345681 AND doublecol < 5678912.345683
+       OR (doublecol = 5678912.345683 AND strcol IS NOT NULL)
+       OR (doublecol = 5678912.345683 AND strcol IS NOT NULL or intcol > 12345 AND intcol < 0)
+       OR (doublecol <> 5678912.345683 AND (strcol IS NULL or intcol > 12345 AND intcol < 0))
+       AND floatcol IS NOT NULL
+       AND (intcol IS NOT NULL and intcol > 0)
+       AND (intcol < 0 OR intcol IS NOT NULL)""".stripMargin
+
+    val result1 = runSql(query1)
+    logInfo(s"$query1 came back with $result1.length results")
+    assert(result1.length == 2, s"$testnm failed on size")
+    val exparr = Array(
+      Array(5678912.345682, -5678912.345682, "ow2", 5678912.345682,
+        "Row2", null, 12342, 23456782, 3456789012342L, 45657.82F),
+      Array(5678912.345683, -5678912.345683, "ow3", 5678912.345683,
+        "Row3", -29, 12343, 23456783, 3456789012343L, 45657.83))
+
+    val res = {
+      for (rx <- 0 until 1)
+        yield compareWithTol(result1(rx).toSeq, exparr(rx), s"Row$rx failed")
+    }.foldLeft(true) { case (res1, newres) => res1 && newres}
+    logInfo(result1.mkString)
+    assert(res, "One or more rows did not match expected")
+
+    logInfo(s"Test $testnm completed successfully")
+  }
+
 }

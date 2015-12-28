@@ -140,7 +140,7 @@ class TestBaseWithSplitData extends TestBase {
     def putNewTableIntoHBase(keys: Seq[Any], keysType: Seq[DataType],
                              vals: Seq[Any], valsType: Seq[DataType]): Unit = {
       val row = new GenericInternalRow(keys.toArray)
-      val key = HBaseKVHelper.makeRowKey(row, keysType, FieldFactory.BINARY_FORMAT, Map())
+      val key = HBaseKVHelper.makeRowKey(row, keysType, FieldFactory.BINARY_FORMAT, Map(), new AstroKeyFactory())
       val put = new Put(key)
       Seq((vals.head, valsType.head, "cf1", "cq11"),
         (vals(1), valsType(1), "cf1", "cq12"),

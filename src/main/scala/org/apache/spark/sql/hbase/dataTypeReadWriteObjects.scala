@@ -34,13 +34,14 @@ object FieldFactory {
   val BINARY_FORMAT = "binaryformat"
   val STRING_FORMAT = "stringformat"
   val HBASE_FORMAT = "hbaseformat"
-  val COLLECTION_SEPERATOR = "collectionSeperator"
-  val MAPKEY_SEPERATOR = "mapkeySeperator"
+  val KEY_SEPARATOR = "keySeparator"
+  val COLLECTION_SEPARATOR = "collectionSeparator"
+  val MAPKEY_SEPARATOR = "mapkeySeparator"
 
   def collectSeperators(parameters: Map[String, String]) = {
     val separatorCandidates: ArrayBuffer[Byte] = new ArrayBuffer[Byte]()
-    separatorCandidates += getByte(parameters.getOrElse(FieldFactory.COLLECTION_SEPERATOR, null), 2.toByte)
-    separatorCandidates += getByte(parameters.getOrElse(FieldFactory.MAPKEY_SEPERATOR, null), 3.toByte)
+    separatorCandidates += getByte(parameters.getOrElse(FieldFactory.COLLECTION_SEPARATOR, null), 2.toByte)
+    separatorCandidates += getByte(parameters.getOrElse(FieldFactory.MAPKEY_SEPARATOR, null), 3.toByte)
 
     //use only control chars that are very unlikely to be part of the string
     // the following might/likely to be used in text files for strings

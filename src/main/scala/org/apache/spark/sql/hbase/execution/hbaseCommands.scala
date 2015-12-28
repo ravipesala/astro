@@ -498,7 +498,7 @@ case class BulkLoadIntoTableCommand(
             }
           }
           if (HBaseKVHelper.string2KV(values.toSeq, relation, lineBuffer, keyBytes, valueBytes)) {
-            val rowKeyData = HBaseKVHelper.encodingRawKeyColumns(keyBytes)
+            val rowKeyData = relation.keyFactory.encodingRawKeyColumns(keyBytes)
             Seq((rowKeyData, valueBytes))
           } else {
             if (skipCount == 100) {

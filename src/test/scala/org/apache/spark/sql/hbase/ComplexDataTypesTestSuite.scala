@@ -56,8 +56,8 @@ class ComplexDataTypesTestSuite extends TestBaseWithNonSplitData {
          |  hbaseTableName "$TestHBaseTableDataTypesName",
          |  keyCols "doublecol, strcol, intcol",
          |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol,datecol=cf2.hdatecol,timestampcol=cf2.htimestampcol,arraycol=cf2.harraycol,structcol=cf2.hstructcol,mapcol=cf2.hmapcol,decicol=cf2.hdecicol",
-         |  collectionSeperator "~",
-         |  mapkeySeperator "&"
+         |  collectionSeparator "~",
+         |  mapkeySeparator "&"
          |)"""
         .stripMargin
     createTable(TestTableDataTypesName, TestHBaseTableDataTypesName, testTableCreationHiveSQL)

@@ -26,6 +26,8 @@ import org.apache.hadoop.hbase._
 class TestBaseWithNonSplitData extends TestBase {
   val TestTableName = "TestTable"
   val TestHBaseTableName: String = s"Hb$TestTableName"
+  val TestSimpleKeyTableName = "TestSimpleKeyTable"
+  val TestHBaseSimpleKeyTableName: String = s"Hb$TestSimpleKeyTableName"
   val TestHbaseColFamilies = Seq("cf1", "cf2")
 
   val CsvPaths = Array("src/test/resources", "sql/hbase/src/test/resources")
@@ -61,11 +63,33 @@ class TestBaseWithNonSplitData extends TestBase {
         .stripMargin
     createTable(TestTableName, TestHBaseTableName, testTableCreationSQL)
     loadData(TestTableName, s"$CsvPath/$DefaultLoadFile")
+
+    val testTableCreationSimpleKeySQL =
+      s"""CREATE TABLE $TestSimpleKeyTableName(
+         |  strcol STRING,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
+         |  intcol INTEGER,
+         |  longcol LONG,
+         |  floatcol FLOAT,
+         |  doublecol DOUBLE
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  hbaseTableName "$TestHBaseSimpleKeyTableName",
+         |  keyCols "doublecol, strcol, intcol",
+         |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol",
+         |  keySeparator "~"
+         |)"""
+        .stripMargin
+    createTable(TestSimpleKeyTableName, TestHBaseSimpleKeyTableName, testTableCreationSimpleKeySQL)
+    loadData(TestSimpleKeyTableName, s"$CsvPath/$DefaultLoadFile")
   }
 
   override protected def afterAll() = {
     super.afterAll()
     runSql("DROP TABLE " + TestTableName)
+    runSql("DROP TABLE " + TestSimpleKeyTableName)
   }
 
   def createTable(tableName: String, hbaseTable: String, creationSQL: String) = {

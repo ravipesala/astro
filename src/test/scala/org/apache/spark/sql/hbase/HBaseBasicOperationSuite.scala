@@ -68,85 +68,85 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
 //    dropNativeHbaseTable("testNamespace.ht0")
 //  }
 
-  test("Insert and Query Single Row") {
-    try {
-      dropLogicalTable("tb1")
-    } catch {
-      case e: Throwable => logInfo(e.getMessage)
-    }
-    sql( """CREATE TABLE tb1 (column1 INTEGER, column2 STRING)
-           |USING org.apache.spark.sql.hbase.HBaseSource
-           |OPTIONS(
-           |  tableName "tb1",
-           |  hbaseTableName "ht1",
-           |  keyCols "column1",
-           |  colsMapping "column2=cf.cq"
-           |)""".stripMargin
-    )
-
-    assert(sql( """SELECT * FROM tb1""").collect().length == 0)
-    sql( """INSERT INTO TABLE tb1 VALUES (1024, "abc")""")
-    sql( """INSERT INTO TABLE tb1 VALUES (1028, "abd")""")
-    assert(sql( """SELECT * FROM tb1""").collect().length == 2)
-    assert(
-      sql( """SELECT * FROM tb1 WHERE (column1 = 1023 AND column2 ="abc")""").collect().length == 0)
-    assert(sql(
-      """SELECT * FROM tb1 WHERE (column1 = 1024)
-        |OR (column1 = 1028 AND column2 ="abd")""".stripMargin).collect().length == 2)
-
-    dropLogicalTable("tb1")
-    dropNativeHbaseTable("ht1")
-  }
-
-  test("Insert and Query Single Row in StringFormat") {
-    try {
-      dropLogicalTable("tb2")
-    } catch {
-      case e: Throwable => logInfo(e.getMessage)
-    }
-    sql( """CREATE TABLE tb1 (
-           |  col1 STRING,
-           |  col2 BOOLEAN,
-           |  col3 SMALLINT,
-           |  col4 INTEGER,
-           |  col5 LONG,
-           |  col6 FLOAT,
-           |  col7 DOUBLE
-           |)
-           |USING org.apache.spark.sql.hbase.HBaseSource
-           |OPTIONS(
-           |  tableName "tb1",
-           |  hbaseTableName "ht2",
-           |  keyCols "col1",
-           |  colsMapping "col2=cf1.cq11, col3=cf1.cq12, col4=cf1.cq13, col5=cf2.cq21, col6=cf2.cq22, col7=cf2.cq23",
-           |  encodingFormat "StringFormat"
-           |)""".stripMargin
-    )
-
-    assert(sql( """SELECT * FROM tb1""").collect().length == 0)
-    sql( """INSERT INTO TABLE tb1 VALUES ("row1", false, 1000, 5050 , 50000 , 99.99 , 999.999)""")
-    sql( """INSERT INTO TABLE tb1 VALUES ("row2", false, 99  , 10000, 9999  , 1000.1, 5000.5)""")
-    sql( """INSERT INTO TABLE tb1 VALUES ("row3", true , 555 , 999  , 100000, 500.05, 10000.01)""")
-    sql( """SELECT col1 FROM tb1 where col2<true order by col2""")
-      .collect().zip(Seq("row1", "row2")).foreach{case (r,s) => assert(r.getString(0) == s)}
-    sql( """SELECT * FROM tb1 where col3>500 order by col3""")
-      .collect().zip(Seq("row3", "row1")).foreach{case (r,s) => assert(r.getString(0) == s)}
-    sql( """SELECT * FROM tb1 where col4>5000 order by col4""")
-      .collect().zip(Seq("row1", "row2")).foreach{case (r,s) => assert(r.getString(0) == s)}
-    sql( """SELECT * FROM tb1 where col5>50000 order by col5""")
-      .collect().zip(Seq("row3")).foreach{case (r,s) => assert(r.getString(0) == s)}
-    sql( """SELECT * FROM tb1 where col6>500 order by col6""")
-      .collect().zip(Seq("row3", "row2")).foreach{case (r,s) => assert(r.getString(0) == s)}
-    sql( """SELECT * FROM tb1 where col7>5000 order by col7""")
-      .collect().zip(Seq("row2", "row3")).foreach{case (r,s) => assert(r.getString(0) == s)}
-
-    dropLogicalTable("tb2")
-    dropNativeHbaseTable("ht2")
-  }
-
-  test("Select test 0") {
-    assert(sql( """SELECT * FROM ta""").count() == 14)
-  }
+//  test("Insert and Query Single Row") {
+//    try {
+//      dropLogicalTable("tb1")
+//    } catch {
+//      case e: Throwable => logInfo(e.getMessage)
+//    }
+//    sql( """CREATE TABLE tb1 (column1 INTEGER, column2 STRING)
+//           |USING org.apache.spark.sql.hbase.HBaseSource
+//           |OPTIONS(
+//           |  tableName "tb1",
+//           |  hbaseTableName "ht1",
+//           |  keyCols "column1",
+//           |  colsMapping "column2=cf.cq"
+//           |)""".stripMargin
+//    )
+//
+//    assert(sql( """SELECT * FROM tb1""").collect().length == 0)
+//    sql( """INSERT INTO TABLE tb1 VALUES (1024, "abc")""")
+//    sql( """INSERT INTO TABLE tb1 VALUES (1028, "abd")""")
+//    assert(sql( """SELECT * FROM tb1""").collect().length == 2)
+//    assert(
+//      sql( """SELECT * FROM tb1 WHERE (column1 = 1023 AND column2 ="abc")""").collect().length == 0)
+//    assert(sql(
+//      """SELECT * FROM tb1 WHERE (column1 = 1024)
+//        |OR (column1 = 1028 AND column2 ="abd")""".stripMargin).collect().length == 2)
+//
+//    dropLogicalTable("tb1")
+//    dropNativeHbaseTable("ht1")
+//  }
+//
+//  test("Insert and Query Single Row in StringFormat") {
+//    try {
+//      dropLogicalTable("tb2")
+//    } catch {
+//      case e: Throwable => logInfo(e.getMessage)
+//    }
+//    sql( """CREATE TABLE tb1 (
+//           |  col1 STRING,
+//           |  col2 BOOLEAN,
+//           |  col3 SMALLINT,
+//           |  col4 INTEGER,
+//           |  col5 LONG,
+//           |  col6 FLOAT,
+//           |  col7 DOUBLE
+//           |)
+//           |USING org.apache.spark.sql.hbase.HBaseSource
+//           |OPTIONS(
+//           |  tableName "tb1",
+//           |  hbaseTableName "ht2",
+//           |  keyCols "col1",
+//           |  colsMapping "col2=cf1.cq11, col3=cf1.cq12, col4=cf1.cq13, col5=cf2.cq21, col6=cf2.cq22, col7=cf2.cq23",
+//           |  encodingFormat "StringFormat"
+//           |)""".stripMargin
+//    )
+//
+//    assert(sql( """SELECT * FROM tb1""").collect().length == 0)
+//    sql( """INSERT INTO TABLE tb1 VALUES ("row1", false, 1000, 5050 , 50000 , 99.99 , 999.999)""")
+//    sql( """INSERT INTO TABLE tb1 VALUES ("row2", false, 99  , 10000, 9999  , 1000.1, 5000.5)""")
+//    sql( """INSERT INTO TABLE tb1 VALUES ("row3", true , 555 , 999  , 100000, 500.05, 10000.01)""")
+//    sql( """SELECT col1 FROM tb1 where col2<true order by col2""")
+//      .collect().zip(Seq("row1", "row2")).foreach{case (r,s) => assert(r.getString(0) == s)}
+//    sql( """SELECT * FROM tb1 where col3>500 order by col3""")
+//      .collect().zip(Seq("row3", "row1")).foreach{case (r,s) => assert(r.getString(0) == s)}
+//    sql( """SELECT * FROM tb1 where col4>5000 order by col4""")
+//      .collect().zip(Seq("row1", "row2")).foreach{case (r,s) => assert(r.getString(0) == s)}
+//    sql( """SELECT * FROM tb1 where col5>50000 order by col5""")
+//      .collect().zip(Seq("row3")).foreach{case (r,s) => assert(r.getString(0) == s)}
+//    sql( """SELECT * FROM tb1 where col6>500 order by col6""")
+//      .collect().zip(Seq("row3", "row2")).foreach{case (r,s) => assert(r.getString(0) == s)}
+//    sql( """SELECT * FROM tb1 where col7>5000 order by col7""")
+//      .collect().zip(Seq("row2", "row3")).foreach{case (r,s) => assert(r.getString(0) == s)}
+//
+//    dropLogicalTable("tb2")
+//    dropNativeHbaseTable("ht2")
+//  }
+//
+//  test("Select test 0") {
+//    assert(sql( """SELECT * FROM ta""").count() == 14)
+//  }
 
   test("Count(*/1) and Non-Key Column Query") {
     assert(sql( """SELECT count(*) FROM ta""").collect()(0).get(0) == 14)

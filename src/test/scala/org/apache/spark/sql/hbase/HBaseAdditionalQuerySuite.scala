@@ -37,7 +37,7 @@ class HBaseAdditionalQuerySuite extends TestBase {
 
     def generateRowKey(keys: Array[Any], length: Int = -1) = {
       val completeRowKey = HBaseKVHelper.
-        makeRowKey(new GenericInternalRow(keys), types, FieldFactory.BINARY_FORMAT, Map())
+        makeRowKey(new GenericInternalRow(keys), types, FieldFactory.BINARY_FORMAT, Map(), new AstroKeyFactory)
       if (length < 0) completeRowKey
       else completeRowKey.take(length)
     }

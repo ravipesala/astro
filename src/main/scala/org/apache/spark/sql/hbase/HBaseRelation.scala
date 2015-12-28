@@ -123,8 +123,8 @@ class HBaseSource extends SchemaRelationProvider {
         case _ =>
       }
     }
-    addExraParam(FieldFactory.COLLECTION_SEPERATOR)
-    addExraParam(FieldFactory.MAPKEY_SEPERATOR)
+    addExraParam(FieldFactory.COLLECTION_SEPARATOR)
+    addExraParam(FieldFactory.MAPKEY_SEPARATOR)
     val separators = FieldFactory.collectSeperators(extraParams)
 
     val allColumns = colsSeq.map {
@@ -148,6 +148,12 @@ class HBaseSource extends SchemaRelationProvider {
         }
     }
 
+    val keyFactory = parameters.get(FieldFactory.KEY_SEPARATOR) match {
+      case Some(value) =>
+        new SimpleKeyFactory(value.toCharArray()(0).toByte)
+      case _ => new AstroKeyFactory
+    }
+
     val hbaseContext = sqlContext.asInstanceOf[HBaseSQLContext]
     val dataDelimiter =
       hbaseContext.conf.getConfString("spark.sql.hbase.splitkeys.dataDelimiter", ",")
@@ -168,12 +174,12 @@ class HBaseSource extends SchemaRelationProvider {
               FieldFactory.createFieldData(dataTypes(idx), encodingFormat, separators).parseStringToData(skv)
           }
           new GenericInternalRow(rowArr)
-        }.map(HBaseKVHelper.makeRowKey(_, dataTypes, encodingFormat, extraParams))
+        }.map(HBaseKVHelper.makeRowKey(_, dataTypes, encodingFormat, extraParams, keyFactory))
       case None => null
     }
 
     hbaseContext.hbaseCatalog.createTable(
-      tableName, rawNamespace, hbaseTable, allColumns, splitKeys, separators, encodingFormat)
+      tableName, rawNamespace, hbaseTable, allColumns, splitKeys, separators, encodingFormat, keyFactory)
   }
 }
 
@@ -194,6 +200,7 @@ private[sql] case class HBaseRelation(
                                        deploySuccessfully: Option[Boolean],
                                        separators: Array[Byte],
                                        encodingFormat: String = FieldFactory.BINARY_FORMAT,
+                                       keyFactory: KeyFactory = new AstroKeyFactory,
                                        hiveStorage: Boolean = false)
                                      (@transient var context: SQLContext)
   extends BaseRelation with InsertableRelation with Serializable with Logging {
@@ -393,7 +400,7 @@ private[sql] case class HBaseRelation(
             (reader.getRawBytes(startKey.get.asInstanceOf[reader.InternalType]), keyType)
           }
           val rowKeys = head :+ tail
-          val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
+          val row = keyFactory.encodingRawKeyColumns(rowKeys)
           if (cpr.prefix.size == keyColumns.size - 1) {
             // full dimension of row key
             new RowFilter(CompareFilter.CompareOp.EQUAL, new BinaryComparator(row))
@@ -410,7 +417,7 @@ private[sql] case class HBaseRelation(
               (reader.getRawBytes(startKey.get.asInstanceOf[reader.InternalType]), keyType)
             }
             val rowKeys = head :+ tail
-            val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
+            val row = keyFactory.encodingRawKeyColumns(rowKeys)
             if (cpr.prefix.size == keyColumns.size - 1) {
               // full dimension of row key
               if (startInclusive) {
@@ -437,7 +444,7 @@ private[sql] case class HBaseRelation(
               (reader.getRawBytes(endKey.get.asInstanceOf[reader.InternalType]), keyType)
             }
             val rowKeys = head :+ tail
-            val row = HBaseKVHelper.encodingRawKeyColumns(rowKeys)
+            val row = keyFactory.encodingRawKeyColumns(rowKeys)
             if (cpr.prefix.size == keyColumns.size - 1) {
               // full dimension of row key
               if (endInclusive) {
@@ -462,7 +469,7 @@ private[sql] case class HBaseRelation(
           * second, RowFilter < (10, 5) (PrefixComparator / Comparator)
           */
           val prefixFilter = if (head.nonEmpty) {
-            val row = HBaseKVHelper.encodingRawKeyColumns(head)
+            val row = keyFactory.encodingRawKeyColumns(head)
             new RowFilter(CompareFilter.CompareOp.EQUAL, new BinaryPrefixComparator(row))
           } else {
             null
@@ -621,7 +628,7 @@ private[sql] case class HBaseRelation(
           skipCount += 1
         }
       } else {
-        val key = HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
+        val key = keyFactory.encodingRawKeyColumns(rawKeyCol)
         val put = new Put(key)
         nonKeyColumns.foreach { nkc =>
           val rowVal = nkc.fieldReader.getRowColumnInHBaseRawType(internalRow, nkc.ordinal)
@@ -672,7 +679,7 @@ private[sql] case class HBaseRelation(
           (rowColumn, kc.dataType)
         }
       )
-      val key = HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
+      val key = keyFactory.encodingRawKeyColumns(rawKeyCol)
       val delete = new Delete(key)
       deletes.add(delete)
       rowIndexInBatch += 1
@@ -936,7 +943,7 @@ private[sql] case class HBaseRelation(
       }
     }
 
-    lazy val rowKeys = HBaseKVHelper.decodingRawKeyColumns(
+    lazy val rowKeys = keyFactory.decodingRawKeyColumns(
       result.head.getRowArray, keyColumns, result.head.getRowLength, result.head.getRowOffset)
     projections.foreach {
       p =>
@@ -962,7 +969,7 @@ private[sql] case class HBaseRelation(
   def buildRow(projections: Seq[(Attribute, Int)],
                result: Result,
                row: MutableRow): InternalRow = {
-    lazy val rowKeys = HBaseKVHelper.decodingRawKeyColumns(result.getRow, keyColumns)
+    lazy val rowKeys = keyFactory.decodingRawKeyColumns(result.getRow, keyColumns)
     projections.foreach {
       p =>
         columnMap.get(p._1.name).get match {
@@ -992,37 +999,16 @@ private[sql] case class HBaseRelation(
   def nativeKeyConvert(rawKey: Option[HBaseRawType]): Seq[Any] = {
     if (rawKey.isEmpty) Nil
     else {
-      val finalRowKey = getFinalKey(rawKey)
+      val finalRowKey = keyFactory match {
+        case a: AstroKeyFactory => getFinalKey(rawKey)
+        case s: SimpleKeyFactory => getFinalKeyForSimpleFactory(rawKey)
+      }
 
-      HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns).
+      keyFactory.decodingRawKeyColumns(finalRowKey, keyColumns).
         zipWithIndex.map(pi => keyColumns(pi._2).fieldReader.getValueFromBytes(finalRowKey,
         pi._1._1, pi._1._2))
     }
   }
-
-  //  /**
-  //   *
-  //   * @param kv the cell value to work with
-  //   * @param projection the pair of projection and its index
-  //   * @param row the row to set values on
-  //   */
-  //  private def setColumn(kv: Cell, projection: (Attribute, Int), row: MutableRow,
-  //                        bytesUtils: BytesUtils): Unit = {
-  //    if (kv == null || kv.getValueLength == 0) {
-  //      row.setNullAt(projection._2)
-  //    } else {
-  //      val dt = projection._1.dataType
-  //      if (dt.isInstanceOf[AtomicType]) {
-  //        DataTypeUtils.setRowColumnFromHBaseRawType(
-  //          row, projection._2, kv.getValueArray, kv.getValueOffset, kv.getValueLength, dt, bytesUtils)
-  //      } else {
-  //        // for complex types, deserialiation is involved and we aren't sure about buffer safety
-  //        val colValue = CellUtil.cloneValue(kv)
-  //        DataTypeUtils.setRowColumnFromHBaseRawType(
-  //          row, projection._2, colValue, 0, colValue.length, dt, bytesUtils)
-  //      }
-  //    }
-  //  }
 
   /**
    * Convert the row key to its proper format. Due to the nature of HBase, the start and
@@ -1050,7 +1036,7 @@ private[sql] case class HBaseRelation(
       else {
         val typeOfKey = keyColumns(curKeyIndex)
         if (typeOfKey.dataType == StringType) {
-          val indexOfStringEnd = origRowKey.indexOf(HBaseKVHelper.delimiter, rowIndex)
+          val indexOfStringEnd = origRowKey.indexOf(keyFactory.delimiter, rowIndex)
           if (indexOfStringEnd == -1) {
             val nOfUTF8StrBytes = HBaseRelation.numOfBytes(origRowKey(rowIndex))
             val delta = if (nOfUTF8StrBytes > origRowKey.length - rowIndex) {
@@ -1099,6 +1085,81 @@ private[sql] case class HBaseRelation(
     getFinalRowKey(0, 0)
   }
 
+  /**
+   * Convert the row key to its proper format. Due to the nature of HBase, the start and
+   * end of partition could be partial row key, we may need to append 0x00 to make it comply
+   * with the definition of key columns, for example, add four 0x00 if a key column type is
+   * integer. Also string type (of UTF8) may need to be padded with the minimum UTF8
+   * continuation byte(s)
+   * @param rawKey the original row key
+   * @return the proper row key based on the definition of the key columns
+   */
+  def getFinalKeyForSimpleFactory(rawKey: Option[HBaseRawType]): HBaseRawType = {
+    val origRowKey: HBaseRawType = rawKey.get
+
+    /**
+     * Recursively run this function to check the key columns one by one.
+     * If the input raw key contains the whole part of this key columns, then continue to
+     * check the next one; otherwise, append the raw key by adding 0x00(or minimal UTF8
+     * continuation bytes) to its proper format and return it.
+     * @param rowIndex the start point of unchecked bytes in the input raw key
+     * @param curKeyIndex the next key column need to be checked
+     * @return the proper row key based on the definition of the key columns
+     */
+    def getFinalKeyForSimpleFactory(rowIndex: Int, curKeyIndex: Int): HBaseRawType = {
+      if (curKeyIndex >= keyColumns.length) origRowKey
+      else {
+        val typeOfKey = keyColumns(curKeyIndex)
+        if (typeOfKey.dataType == StringType) {
+          val indexOfStringEnd = origRowKey.indexOf(keyFactory.delimiter, rowIndex)
+          if (indexOfStringEnd == -1) {
+            val nOfUTF8StrBytes = HBaseRelation.numOfBytes(origRowKey(rowIndex))
+            val delta = if (nOfUTF8StrBytes > origRowKey.length - rowIndex) {
+              // padding of 1000 0000 is needed according to UTF-8 spec
+              Array.fill[Byte](nOfUTF8StrBytes - origRowKey.length
+                + rowIndex)(HBaseRelation.utf8Padding) ++
+                new Array[Byte](getMinimum(curKeyIndex + 1))
+            } else {
+              new Array[Byte](getMinimum(curKeyIndex + 1))
+            }
+            origRowKey ++ delta
+          } else {
+            getFinalKeyForSimpleFactory(indexOfStringEnd + 1, curKeyIndex + 1)
+          }
+        } else {
+          val nextRowIndex = rowIndex +
+            typeOfKey.dataType.asInstanceOf[AtomicType].defaultSize+1
+          if (nextRowIndex < origRowKey.length) {
+            getFinalKeyForSimpleFactory(nextRowIndex, curKeyIndex + 1)
+          } else {
+            val delta: Array[Byte] = {
+              new Array[Byte](nextRowIndex - origRowKey.length + getMinimum(curKeyIndex + 1))
+            }
+            origRowKey ++ delta
+          }
+        }
+      }
+    }
+
+    /**
+     * Get the minimum key length based on the key columns definition
+     * @param startKeyIndex the start point of the key column
+     * @return the minimum length required for the remaining key columns
+     */
+    def getMinimum(startKeyIndex: Int): Int = {
+      keyColumns.drop(startKeyIndex).map(k => {
+        k.dataType match {
+          case StringType => 1
+          case dt: DecimalType => 4
+          case _ => k.dataType.asInstanceOf[AtomicType].defaultSize
+        }
+      }
+      ).sum
+    }
+
+    getFinalKeyForSimpleFactory(0, 0)
+  }
+
   private[hbase] def fetchPartitions(): Unit = {
     if (System.currentTimeMillis - partitionTS >= partitionExpiration) {
       partitionTS = System.currentTimeMillis
@@ -1142,8 +1203,11 @@ private[sql] case class HBaseRelation(
          * the partition start/end could be incomplete byte array, so we need to make it
          * a complete key first
          */
-        val finalRowKey = getFinalKey(bound)
-        val (start, length) = HBaseKVHelper.decodingRawKeyColumns(finalRowKey, keyColumns)(index)
+        val finalRowKey = keyFactory match {
+          case a: AstroKeyFactory => getFinalKey(bound)
+          case s: SimpleKeyFactory => getFinalKeyForSimpleFactory(bound)
+        }
+        val (start, length) = keyFactory.decodingRawKeyColumns(finalRowKey, keyColumns)(index)
         Some(fieldReadersMap.get(dt).getValueFromBytes(finalRowKey, start, length).asInstanceOf[dt.InternalType])
       }
     }

@@ -62,7 +62,9 @@ class HBasePartitionerSuite extends TestBase {
       asInstanceOf[PrimitiveDataField]
     val fieldDataString = FieldFactory.createFieldData(StringType, FieldFactory.BINARY_FORMAT, Array[Byte]())
 
-    val rowkey = HBaseKVHelper.encodingRawKeyColumns(
+    val keyFactory = new AstroKeyFactory
+
+    val rowkey = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataDouble.getRawBytes(123.456.asInstanceOf[fieldDataDouble.InternalType]), DoubleType),
         (fieldDataString.
           getRawBytes(UTF8String.fromString("abcdef").asInstanceOf[fieldDataString.InternalType]), StringType),
@@ -72,7 +74,7 @@ class HBasePartitionerSuite extends TestBase {
 
     assert(rowkey.length === 8 + 6 + 1 + 1 + 4)
 
-    val keys = HBaseKVHelper.decodingRawKeyColumns(rowkey,
+    val keys = keyFactory.decodingRawKeyColumns(rowkey,
       Seq(KeyColumn("col1", DoubleType, 0, FieldFactory.createFieldData(DoubleType,
         FieldFactory.BINARY_FORMAT, Array[Byte]())),
         KeyColumn("col2", StringType, 1,FieldFactory.createFieldData(StringType,
@@ -95,7 +97,8 @@ class HBasePartitionerSuite extends TestBase {
     val fieldDataDouble = FieldFactory.createFieldData(DoubleType, FieldFactory.BINARY_FORMAT, Array[Byte]())
       .asInstanceOf[PrimitiveDataField]
     val fieldDataString = FieldFactory.createFieldData(StringType, FieldFactory.BINARY_FORMAT, Array[Byte]())
-    val rowkey = HBaseKVHelper.encodingRawKeyColumns(
+    val keyFactory = new AstroKeyFactory
+    val rowkey = keyFactory.encodingRawKeyColumns(
         Seq((fieldDataDouble.getRawBytes(123.456.asInstanceOf[fieldDataDouble.InternalType]), DoubleType),
         (fieldDataString.
           getRawBytes(UTF8String.fromString("abcdef").asInstanceOf[fieldDataString.InternalType]), StringType),
@@ -104,7 +107,7 @@ class HBasePartitionerSuite extends TestBase {
 
     assert(rowkey.length === 8 + 6 + 1 + 4)
 
-    val keys = HBaseKVHelper.decodingRawKeyColumns(rowkey,
+    val keys = keyFactory.decodingRawKeyColumns(rowkey,
       Seq(KeyColumn("col1", DoubleType, 0,
         FieldFactory.createFieldData(DoubleType, FieldFactory.BINARY_FORMAT, Array[Byte]())),
         KeyColumn("col2", StringType, 1,
@@ -172,28 +175,29 @@ class HBasePartitionerSuite extends TestBase {
     assert(expandedCPRs.size == 4)
 
     val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
+    val keyFactory = new AstroKeyFactory
 
-    val rowkey0 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey0 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(1.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey1 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey1 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(8.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(2.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey2 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey2 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(32.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(16.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey3 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey3 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(64.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(128.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )
 
-    val rowkey4 = HBaseKVHelper.encodingRawKeyColumns(
+    val rowkey4 = keyFactory.encodingRawKeyColumns(
       Seq((fieldDataInteger.getRawBytes(1024.asInstanceOf[fieldDataInteger.InternalType]), IntegerType)
         , (fieldDataInteger.getRawBytes(256.asInstanceOf[fieldDataInteger.InternalType]), IntegerType))
     )

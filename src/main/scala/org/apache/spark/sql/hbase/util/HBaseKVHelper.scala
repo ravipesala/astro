@@ -28,80 +28,6 @@ import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
 object HBaseKVHelper {
-  val delimiter: Byte = 0
-
-  /**
-   * create row key based on key columns information
-   * for strings, it will add '0x00' as its delimiter
-   * @param rawKeyColumns sequence of byte array and data type representing the key columns
-   * @return array of bytes
-   */
-  def encodingRawKeyColumns(rawKeyColumns: Seq[(HBaseRawType, DataType)]): HBaseRawType = {
-    var length = 0
-    for (i <- 0 until rawKeyColumns.length) {
-      length += rawKeyColumns(i)._1.length
-      if ((rawKeyColumns(i)._2 == StringType ||
-        rawKeyColumns(i)._2 == DecimalType) &&
-        i < rawKeyColumns.length - 1) {
-        length += 1
-      }
-    }
-    val result = new HBaseRawType(length)
-    var index = 0
-    var kcIdx = 0
-    for (rawKeyColumn <- rawKeyColumns) {
-      Array.copy(rawKeyColumn._1, 0, result, index, rawKeyColumn._1.length)
-      index += rawKeyColumn._1.length
-      if ((rawKeyColumn._2 == StringType ||
-        rawKeyColumn._2 == DecimalType) &&
-        kcIdx < rawKeyColumns.length - 1) {
-        result(index) = delimiter
-        index += 1
-      }
-      kcIdx += 1
-    }
-    result
-  }
-
-  /**
-   * generate the sequence information of key columns from the byte array
-   * @param rowKey array of bytes
-   * @param keyColumns the sequence of key columns
-   * @param keyLength rowkey length: specified if not negative
-   * @return sequence of information in (offset, length) tuple
-   */
-  def decodingRawKeyColumns(rowKey: HBaseRawType,
-                            keyColumns: Seq[KeyColumn],
-                            keyLength: Int = -1,
-                            startIndex: Int = 0): Seq[(Int, Int)] = {
-    var index = startIndex
-    var pos = 0
-    val limit = if (keyLength < 0) {
-      rowKey.length
-    } else {
-      index + keyLength
-    }
-    keyColumns.map {
-      case c =>
-        if (index >= limit) (-1, -1)
-        else {
-          val offset = index
-          if (c.dataType == StringType || c.dataType == DecimalType) {
-            pos = rowKey.indexOf(delimiter, index)
-            if (pos == -1 || pos > limit) {
-              // this is at the last dimension
-              pos = limit
-            }
-            index = pos + 1
-            (offset, pos - offset)
-          } else {
-            val length = c.dataType.asInstanceOf[AtomicType].defaultSize
-            index += length
-            (offset, length)
-          }
-        }
-    }
-  }
 
   /**
    * Takes a record, translate it into HBase row key column and value by matching with metadata
@@ -140,11 +66,11 @@ object HBaseKVHelper {
    * @param input the byte array
    * @return the modified byte array
    */
-  def addOneString(input: HBaseRawType): HBaseRawType = {
+  def addOneString(input: HBaseRawType, separator: Byte): HBaseRawType = {
     val len = input.length
     val result = new HBaseRawType(len + 1)
     Array.copy(input, 0, result, 0, len)
-    result(len) = 0x01.asInstanceOf[Byte]
+    result(len) = (separator+1).asInstanceOf[Byte]
     result
   }
 
@@ -197,13 +123,13 @@ object HBaseKVHelper {
    * @return the row key
    */
   def makeRowKey(row: InternalRow, dataTypeOfKeys: Seq[DataType],
-                 encodingFormat: String, extraParams: Map[String,String]): HBaseRawType = {
+                 encodingFormat: String, extraParams: Map[String,String], keyFactory: KeyFactory): HBaseRawType = {
     val rawKeyCol = dataTypeOfKeys.zipWithIndex.map {
       case (dataType, index) =>
         (FieldFactory.createFieldData(dataType, encodingFormat, FieldFactory.collectSeperators(extraParams)).
           getRowColumnInHBaseRawType(row, index), dataType)
     }
 
-    encodingRawKeyColumns(rawKeyCol)
+    keyFactory.encodingRawKeyColumns(rawKeyCol)
   }
 }

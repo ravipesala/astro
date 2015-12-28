@@ -143,7 +143,7 @@ class HBaseSQLReaderRDD(val relation: HBaseRelation,
     if (list.isEmpty) {
       null
     } else {
-      HBaseKVHelper.encodingRawKeyColumns(list)
+      relation.keyFactory.encodingRawKeyColumns(list)
     }
   }
 
