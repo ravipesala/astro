@@ -52,4 +52,18 @@ private[hbase] object HBaseSerializer {
     b.close()
     res
   }
+
+  /**
+   * de-serialize the byte array to the original object
+   * @param bytes the input byte array
+   * @return the de-serialized object
+   */
+  def deserialize(bytes: Array[Byte], offset: Int, length: Int): Any = {
+    val b = new ByteArrayInputStream(bytes, offset, length)
+    val o = new ObjectInputStream(b)
+    val res = o.readObject()
+    o.close()
+    b.close()
+    res
+  }
 }

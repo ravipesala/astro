@@ -22,9 +22,8 @@ import java.io.{ByteArrayOutputStream, DataOutputStream}
 import org.apache.hadoop.hbase._
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
-import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{GenericInternalRow, GenericRow}
-import org.apache.spark.sql.hbase.util.{BinaryBytesUtils, DataTypeUtils, HBaseKVHelper}
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
+import org.apache.spark.sql.hbase.util.HBaseKVHelper
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
@@ -141,7 +140,7 @@ class TestBaseWithSplitData extends TestBase {
     def putNewTableIntoHBase(keys: Seq[Any], keysType: Seq[DataType],
                              vals: Seq[Any], valsType: Seq[DataType]): Unit = {
       val row = new GenericInternalRow(keys.toArray)
-      val key = HBaseKVHelper.makeRowKey(row, keysType, BinaryBytesUtils)
+      val key = HBaseKVHelper.makeRowKey(row, keysType, FieldFactory.BINARY_FORMAT, Map())
       val put = new Put(key)
       Seq((vals.head, valsType.head, "cf1", "cq11"),
         (vals(1), valsType(1), "cf1", "cq12"),
@@ -230,18 +229,8 @@ class TestBaseWithSplitData extends TestBase {
                  colFamily: String, colQualifier: String) = {
     val bos = new ByteArrayOutputStream()
     val dos = new DataOutputStream(bos)
-    val bu = BinaryBytesUtils.create(rowType)
-    rowType match {
-      case StringType => dos.write(bu.toBytes(rowValue.asInstanceOf[String]))
-      case IntegerType => dos.write(bu.toBytes(rowValue.asInstanceOf[Int]))
-      case BooleanType => dos.write(bu.toBytes(rowValue.asInstanceOf[Boolean]))
-      case ByteType => dos.write(bu.toBytes(rowValue.asInstanceOf[Byte]))
-      case DoubleType => dos.write(bu.toBytes(rowValue.asInstanceOf[Double]))
-      case FloatType => dos.write(bu.toBytes(rowValue.asInstanceOf[Float]))
-      case LongType => dos.write(bu.toBytes(rowValue.asInstanceOf[Long]))
-      case ShortType => dos.write(bu.toBytes(rowValue.asInstanceOf[Short]))
-      case _ => throw new Exception("Unsupported HBase SQL Data Type")
-    }
+    val bu = FieldFactory.createFieldData(rowType, FieldFactory.BINARY_FORMAT, Array[Byte]())
+    dos.write(bu.getRawBytes(rowValue.asInstanceOf[bu.InternalType]))
     put.add(Bytes.toBytes(colFamily), Bytes.toBytes(colQualifier), bos.toByteArray)
   }
 

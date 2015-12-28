@@ -18,11 +18,9 @@
 package org.apache.spark.sql.hbase
 
 import org.apache.hadoop.hbase.util.Bytes
-import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.hbase.execution._
-import org.apache.spark.sql.hbase.util.BinaryBytesUtils
 import org.apache.spark.sql.types._
 
 class HBaseBulkLoadIntoTableSuite extends TestBase {
@@ -437,8 +435,10 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
       TestHbase.hbaseAdmin.disableTable("presplit_table")
       TestHbase.hbaseAdmin.deleteTable("presplit_table")
     }
+    val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
     val splitKeys = Seq(4, 8, 12).map { x =>
-      BinaryBytesUtils.create(IntegerType).toBytes(x)
+      fieldDataInteger.getRawBytes(x.asInstanceOf[fieldDataInteger.InternalType])
+
     }
     TestHbase.hbaseCatalog.createHBaseUserTable("presplit_table", Set("cf1", "cf2"), splitKeys.toArray)
 
@@ -489,8 +489,9 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
       TestHbase.hbaseAdmin.disableTable("presplit_table")
       TestHbase.hbaseAdmin.deleteTable("presplit_table")
     }
+    val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
     val splitKeys = Seq(4, 8, 12).map { x =>
-      BinaryBytesUtils.create(IntegerType).toBytes(x)
+      fieldDataInteger.getRawBytes(x.asInstanceOf[fieldDataInteger.InternalType])
     }
     TestHbase.hbaseCatalog.createHBaseUserTable("presplit_table", Set("cf1", "cf2"), splitKeys.toArray)
 
@@ -543,10 +544,10 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
     }
     // HBasePartitioner binarySearch throws NPE if # regions > 128
     // commit dae6546373a14d4ceb22680954c3482ed33e346a
-
+    val fieldDataInteger = FieldFactory.createFieldData(IntegerType, FieldFactory.BINARY_FORMAT, Array[Byte]())
     // Create > 130 split keys to generate 131 regions.
     val splitKeys = Seq.range(1, 260, 2).map { x =>
-      BinaryBytesUtils.create(IntegerType).toBytes(x)
+      fieldDataInteger.getRawBytes(x.asInstanceOf[fieldDataInteger.InternalType])
     }
 
     TestHbase.hbaseCatalog.createHBaseUserTable(

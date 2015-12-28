@@ -24,6 +24,7 @@ import java.util.Date
 import org.apache.hadoop.hbase.{HColumnDescriptor, HTableDescriptor, TableExistsException, TableName}
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.catalyst.expressions.GenericRow
 import org.apache.spark.sql.catalyst.plans.logical
 import org.apache.spark.sql.catalyst.util._
 import org.apache.spark.sql.{DataFrame, Row}
@@ -118,7 +119,17 @@ abstract class TestBase
           Math.abs(a - e) <= CompareTol
         case (a: Float, e: Float) =>
           Math.abs(a - e) <= CompareTol
+        case (a: java.math.BigDecimal, e: java.math.BigDecimal) =>
+          a.equals(e)
         case (a: Byte, e) => true //For now, we assume it is ok
+        case (a: Seq[Any], e: Seq[Any]) =>
+          if(a.length != e.length) return false
+          a.zipWithIndex.map{f=>
+            if( e(f._2) != f._1) return false
+          }
+          true
+        case (a: GenericRow, e: Seq[Any]) =>
+          compareWithTol(a.toSeq, e, emsg)
         case (a, e) =>
           if (a == null && e == null) {
             logDebug(s"a=null e=null")

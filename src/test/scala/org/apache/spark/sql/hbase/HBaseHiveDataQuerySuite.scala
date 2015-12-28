@@ -45,7 +45,8 @@ class HBaseHiveDataQuerySuite extends TestBaseWithNonSplitData {
          | COLLECTION ITEMS TERMINATED BY '~'
          | stored by 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
          | WITH SERDEPROPERTIES (
-         | "hbase.columns.mapping" = "cf1:hstrcol#b,cf1:hbytecol#b,cf1:hshortcol#b,cf2:hintcol#b,cf2:hlongcol#b,cf2:hfloatcol#b,:key#b" )
+         | "hbase.columns.mapping" = "cf1:hstrcol,cf1:hbytecol,cf1:hshortcol,cf2:hintcol,cf2:hlongcol,cf2:hfloatcol,:key",
+         | "hbase.table.default.storage.type" = "binary" )
          | TBLPROPERTIES ("hbase.table.name" = "$TestHBaseTablePreLoadName")"""
         .stripMargin
     createHiveTable(TestHBaseTableHiveName, TestHBaseTablePreLoadName, testTableCreationHiveSQL)
@@ -91,7 +92,7 @@ class HBaseHiveDataQuerySuite extends TestBaseWithNonSplitData {
   }
 
   override protected def afterAll() = {
-    super.afterAll()
+//    super.afterAll()
     runSql("DROP TABLE " + TestHBaseTableHiveName)
   }
   test("StarOperator * with limit") {

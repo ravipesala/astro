@@ -22,6 +22,7 @@ import org.apache.hadoop.hbase.exceptions.DeserializationException
 import org.apache.hadoop.hbase.filter.ByteArrayComparable
 import org.apache.hadoop.hbase.util.{ByteStringer, Bytes}
 import org.apache.spark.sql.hbase._
+import org.apache.spark.unsafe.types.UTF8String
 
 class CustomComparator(value: Array[Byte]) extends ByteArrayComparable(value) {
   def compareTo(value: HBaseRawType, offset: Int, length: Int): Int = {
@@ -241,3 +242,43 @@ class BoolComparator(value: Array[Byte]) extends CustomComparator(value) {
     else -1
   }
 }
+
+object StringBytesUtils {
+
+  def toString(input: HBaseRawType, offset: Int, length: Int): String = {
+    toUTF8String(input, offset, length).toString
+  }
+
+  def toUTF8String(input: HBaseRawType, offset: Int, length: Int): UTF8String = {
+    UTF8String.fromBytes(input, offset, length)
+  }
+
+  def toByte(input: HBaseRawType, offset: Int, length: Int): Byte = {
+    toString(input, offset, length).toByte
+  }
+
+  def toBoolean(input: HBaseRawType, offset: Int, length: Int): Boolean = {
+    toString(input, offset, length).toBoolean
+  }
+
+  def toDouble(input: HBaseRawType, offset: Int, length: Int): Double = {
+    toString(input, offset, length).toDouble
+  }
+
+  def toShort(input: HBaseRawType, offset: Int, length: Int): Short = {
+    toString(input, offset, length).toShort
+  }
+
+  def toFloat(input: HBaseRawType, offset: Int, length: Int): Float = {
+    toString(input, offset, length).toFloat
+  }
+
+  def toInt(input: HBaseRawType, offset: Int, length: Int): Int = {
+    toString(input, offset, length).toInt
+  }
+
+  def toLong(input: HBaseRawType, offset: Int, length: Int): Long = {
+    toString(input, offset, length).toLong
+  }
+}
+
