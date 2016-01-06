@@ -18,15 +18,17 @@
 package org.apache.spark.sql.hbase
 
 import java.io.{ByteArrayOutputStream, DataOutputStream}
+import java.sql.{Date, Timestamp}
 
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{GenericMutableRow, MutableRow}
+import org.apache.spark.sql.catalyst.expressions.{GenericMutableRow, GenericRowWithSchema, MutableRow}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
+import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 object FieldFactory {
@@ -339,7 +341,16 @@ case class ArrayDataField(dataType: ArrayType,
   }
 
   def getRowColumnInHBaseRawTypeInternal(row: InternalRow, index: Int): HBaseRawType = {
-    getRawBytes(row.getArray(index))
+    val array = row.get(index, dataType)
+    array match {
+      case a: InternalType => getRawBytes(a)
+      case b: mutable.WrappedArray[Any] =>
+        val arrayInternal = elementField match {
+          case s: StringDataField => b.toArray.map(f => UTF8String.fromString(f.toString).asInstanceOf[Any])
+          case _ => b.toArray
+        }
+        getRawBytes(new GenericArrayData(arrayInternal))
+    }
   }
 
   def getRawBytes(value: InternalType): HBaseRawType = {
@@ -403,7 +414,17 @@ case class StructDataField(dataType: StructType,
   }
 
   def getRowColumnInHBaseRawTypeInternal(row: InternalRow, index: Int): HBaseRawType = {
-    getRawBytes(row.getStruct(index, fields.size))
+    val struct = row.get(index, dataType)
+    struct match {
+      case r: InternalType => getRawBytes(r)
+      case g: GenericRowWithSchema =>
+        val row = new GenericMutableRow(g.size)
+        for (i <- 0 until g.size) {
+          val field = if (g.get(i).isInstanceOf[String]) UTF8String.fromString(g.get(i).toString) else g.get(i)
+          row.update(i, field)
+        }
+        getRawBytes(row)
+    }
   }
 
   def getRawBytes(value: InternalType): HBaseRawType = {
@@ -483,7 +504,20 @@ case class MapDataField(dataType: MapType,
   }
 
   def getRowColumnInHBaseRawTypeInternal(row: InternalRow, index: Int): HBaseRawType = {
-    getRawBytes(row.getMap(index))
+    val map = row.get(index, dataType)
+    map match {
+      case m: InternalType => getRawBytes(m)
+      case m: Map[Any, Any] =>
+        val keyList = new ArrayBuffer[Any]()
+        val valList = new ArrayBuffer[Any]()
+        m.map { kv =>
+          val k = if (kv._1.isInstanceOf[String]) UTF8String.fromString(kv._1.toString) else kv._1
+          keyList += k
+          val v = if (kv._2.isInstanceOf[String]) UTF8String.fromString(kv._2.toString) else kv._2
+          valList += v
+        }
+        getRawBytes(new ArrayBasedMapData(new GenericArrayData(keyList.toArray), new GenericArrayData(valList.toArray)))
+    }
   }
 
   def getRawBytes(value: InternalType): HBaseRawType = {
@@ -528,7 +562,12 @@ case class DateDataField(field: AbstractIntDataField) extends FieldData {
   }
 
   protected def getRowColumnInHBaseRawTypeInternal(row: InternalRow, index: Int): HBaseRawType = {
-    field.getRowColumnInHBaseRawTypeInternal(row, index)
+    val date = row.get(index, DateType)
+    date match {
+      case d: Integer => field.getRawBytes(d)
+      case d: Date => field.getRawBytes(DateTimeUtils.fromJavaDate(d))
+    }
+
   }
 
   def getRawBytes(value: InternalType): HBaseRawType = {
@@ -555,7 +594,11 @@ case class TimestampDataField(field: AbstractLongDataField) extends FieldData {
   }
 
   protected def getRowColumnInHBaseRawTypeInternal(row: InternalRow, index: Int): HBaseRawType = {
-    field.getRowColumnInHBaseRawTypeInternal(row, index)
+    val date = row.get(index, TimestampType)
+    date match {
+      case d: java.lang.Long => field.getRawBytes(d)
+      case d: Timestamp => field.getRawBytes(DateTimeUtils.fromJavaTimestamp(d))
+    }
   }
 
   def getRawBytes(value: InternalType): HBaseRawType = {
@@ -697,7 +740,11 @@ abstract class AbstractDecimalDataField(val dataType: DecimalType) extends Field
   }
 
   def getRowColumnInHBaseRawTypeInternal(row: InternalRow, index: Int): HBaseRawType = {
-    getRawBytes(row.getDecimal(index, dataType.precision, dataType.scale))
+    val deci = row.get(index, dataType)
+    deci match {
+      case d: InternalType => getRawBytes(row.getDecimal(index, dataType.precision, dataType.scale))
+      case d: java.math.BigDecimal => getRawBytes(Decimal(d))
+    }
   }
 
   def parseStringToDataInternal(input: String): InternalType = {

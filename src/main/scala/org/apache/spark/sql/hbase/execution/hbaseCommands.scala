@@ -17,7 +17,7 @@
 package org.apache.spark.sql.hbase.execution
 
 import java.text.SimpleDateFormat
-import java.util.{UUID, Date}
+import java.util.{Date, UUID}
 
 import org.apache.hadoop.conf.Configurable
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -25,26 +25,25 @@ import org.apache.hadoop.hbase._
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.hbase.mapreduce.{HFileOutputFormat2, LoadIncrementalHFiles}
 import org.apache.hadoop.hbase.util.Bytes
-import org.apache.hadoop.mapred.JobConf
 import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter
 import org.apache.hadoop.mapreduce.{Job, RecordWriter}
+import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mapreduce.SparkHadoopMapReduceUtil
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.expressions.{Expression, Attribute}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression, GenericMutableRow, GenericRow}
 import org.apache.spark.sql.catalyst.plans.logical.Subquery
+import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.execution.RunnableCommand
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.hbase.HBasePartitioner.HBaseRawOrdering
 import org.apache.spark.sql.hbase._
-import org.apache.spark.sql.hbase.util.{HBaseKVHelper, DataTypeUtils, Util}
+import org.apache.spark.sql.hbase.util.{HBaseKVHelper, Util}
 import org.apache.spark.sql.types._
-import org.apache.spark._
 
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 
 @DeveloperApi
 case class AlterDropColCommand(tableName: String, columnName: String) extends RunnableCommand {
@@ -216,7 +215,18 @@ case class InsertValueIntoTableCommand(tableName: String, valueSeq: Seq[String])
     val bytes = new Array[Any](relation.output.length)
     for (i <- relation.output.indices) {
       if (i < valueSeq.length) {
-        bytes(i) = relation.fieldReadersMap.get(relation.schema(i).dataType).parseStringToData(valueSeq(i))
+        val dataType = relation.schema(i).dataType
+        val data = relation.fieldReadersMap.get(dataType).parseStringToData(valueSeq(i))
+        bytes(i) = dataType match {
+          case d: DateType => DateTimeUtils.toJavaDate(data.asInstanceOf[Int])
+          case t: TimestampType => DateTimeUtils.toJavaTimestamp(data.asInstanceOf[Long])
+          case a: ArrayType => data.asInstanceOf[GenericArrayData].array
+          case r: StructType => new GenericRow(data.asInstanceOf[GenericMutableRow].toSeq(r).toArray)
+          case m: MapType =>
+            val mr = data.asInstanceOf[ArrayBasedMapData]
+            mr.keyArray.toArray[Any](m.keyType).zip(mr.valueArray.toArray[Any](m.valueType)).toMap
+          case _=> data
+        }
       } else {
         bytes(i) = null
       }
