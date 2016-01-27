@@ -536,7 +536,7 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
       val qualifiedCPRanges = if (criticalPoints.nonEmpty) {
         // partial reduce
         val cpRanges: Seq[CriticalPointRange[t]] =
-          RangeCriticalPoint.generateCriticalPointRange(criticalPoints, dimIndex, dt)
+          RangeCriticalPoint.generateCriticalPointRange(criticalPoints, dimIndex, dt, relation)
 
         // set values for all more significant dimensions
         var parent: Node = node
