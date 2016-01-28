@@ -1110,7 +1110,7 @@ private[sql] case class HBaseRelation(
       if (curKeyIndex >= keyColumns.length) origRowKey
       else {
         val typeOfKey = keyColumns(curKeyIndex)
-        if (typeOfKey.dataType == StringType) {
+        if (typeOfKey.dataType == StringType || encodingFormat.equals(FieldFactory.STRING_FORMAT)) {
           val indexOfStringEnd = origRowKey.indexOf(keyFactory.delimiter, rowIndex)
           if (indexOfStringEnd == -1) {
             val nOfUTF8StrBytes = HBaseRelation.numOfBytes(origRowKey(rowIndex))

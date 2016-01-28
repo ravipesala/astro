@@ -400,9 +400,53 @@ object RangeCriticalPoint {
           } else r
         }
         ).filter(r => r != null)
+      } else if (dt.isInstanceOf[NumericType] && relation.fieldReadersMap.get(dt.asInstanceOf[DataType]).
+        getDataStorageFormat.equals(FieldFactory.STRING_FORMAT)) {
+        result.map(r => {
+          var gotNew = false
+          val numeric = dt.asInstanceOf[NumericType]
+            .numeric.asInstanceOf[Numeric[T]]
+
+          val (start, startInclusive) = (r.start, r.startInclusive)
+
+          val (end, endInclusive) = {
+            if (r.end.isDefined ) {
+              gotNew = true
+              val mul = Math.pow(10, r.end.get.toString.length-1)
+              (Some(numeric.plus(r.end.get, convert(r.end.get, mul).asInstanceOf[T])), r.endInclusive)
+            } else (r.end, r.endInclusive)
+          }
+
+          if (gotNew) {
+            if (start.isDefined
+              && end.isDefined
+              && (start.get == numeric.plus(end.get, numeric.one))) {
+              null
+            } else new CriticalPointRange[T](start, startInclusive, end, endInclusive, r.dt, null)
+          } else r
+        }
+        ).filter(r => r != null)
       } else result
     }
   }
+
+  def convert(value: Any, target: Number): Number = {
+    value match {
+      case Byte => target.byteValue()
+      case Short => target.shortValue()
+      case Int => target.intValue()
+      case Long => target.longValue()
+      case Double => target.doubleValue()
+      case Float => target.floatValue()
+      case a:java.lang.Byte => target.byteValue()
+      case a:java.lang.Short => target.shortValue()
+      case a:java.lang.Integer => target.intValue()
+      case a:java.lang.Long => target.longValue()
+      case a:java.lang.Double => target.doubleValue()
+      case a:java.lang.Float => target.floatValue()
+    }
+  }
+
 
   /**
    * Step 1: generate critical point ranges for a particular dimension
@@ -484,7 +528,6 @@ object RangeCriticalPoint {
   }
 
   // Step 3
-
   /**
    * Search for a tight, either upper or lower, equality bound
    * @param eq the equality point to start search with
